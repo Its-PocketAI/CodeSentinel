@@ -51,6 +51,8 @@ pnpm dev
 - Web: `http://localhost:3989/`
 - First-time setup: `http://localhost:3989/#/setup`
 
+Windows note: WSL is recommended for best compatibility (PTY, CLI tools, and filesystem paths).
+
 Run in background (optional):
 ```bash
 ./run/dev-start.sh

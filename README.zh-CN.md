@@ -51,6 +51,8 @@ pnpm dev
 - Web：`http://localhost:3989/`
 - 首次安装：`http://localhost:3989/#/setup`
 
+Windows 建议：推荐使用 WSL 运行以获得更好的兼容性（PTY、CLI 工具与路径处理）。
+
 后台启动（可选）：
 ```bash
 ./run/dev-start.sh
