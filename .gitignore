@@ -1,0 +1,77 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Cursor / shared tooling (local rules and ui-ux-pro-max)
+.cursor/
+.shared/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.vite/
+.vite-server/
+
+# Runtime PID files
+run/*.pid
+
+# Local runtime sandbox (legacy)
+code-sentinal/
+
+# Agent runtime buffers
+data/agent-buffers/
+
+# SQLite WAL runtime files (keep only .db and schema.sql in repo)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# OS
+Thumbs.db
+ehthumbs.db
+
+# Local config (contains machine-specific paths); use config.example.json as template
+config/config.json
+config/config.local.json
+config/*.local.json
+config/roots.local.json
+
+# Setup completion flag (local only, do not commit)
+config/.setup-done
+
+# SQLite variants (if present)
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal

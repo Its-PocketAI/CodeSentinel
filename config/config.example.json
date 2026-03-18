@@ -1,0 +1,53 @@
+{
+  "server": {
+    "port": 3990
+  },
+  "auth": {
+    "enabled": true,
+    "username": "admin",
+    "password": "change_me",
+    "tokenTtlDays": 3,
+    "loginMaxAttempts": 5,
+    "loginLockMinutes": 10,
+    "captcha": {
+      "enabled": true,
+      "ttlSec": 120
+    },
+    "encryption": {
+      "enabled": true
+    }
+  },
+  "roots": [],
+  "defaultProjectUser": "codesentinel",
+  "projectUsers": [
+    {
+      "root": "/path/to/project",
+      "username": "codesentinel",
+      "enabled": false
+    }
+  ],
+  "dangerousCommandDenylist": [
+    "sudo",
+    "su",
+    "rm",
+    "shutdown",
+    "reboot",
+    "kill",
+    "pkill",
+    "launchctl",
+    "chmod",
+    "chown",
+    "chgrp",
+    "dd",
+    "diskutil",
+    "mount",
+    "umount"
+  ],
+  "limits": {
+    "timeoutSec": 900,
+    "maxOutputKB": 1024,
+    "maxSessions": 4,
+    "termLogMaxMB": 8,
+    "termScrollback": 2000
+  }
+}

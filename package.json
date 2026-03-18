@@ -1,0 +1,28 @@
+{
+  "name": "codesentinel",
+  "private": true,
+  "packageManager": "pnpm@10.4.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "init-db": "pnpm --filter @codesentinel/server run init-db",
+    "dev": "node scripts/start-server-first.js",
+    "dev:all": "concurrently -n protocol,server,web -c auto --kill-others-on-fail=false \"pnpm --filter @codesentinel/protocol dev\" \"pnpm --filter @codesentinel/server dev\" \"pnpm --filter @codesentinel/web dev\"",
+    "dev:fresh": "node scripts/free-ports.js && pnpm dev",
+    "dev:server": "pnpm --filter @codesentinel/server dev",
+    "dev:web": "concurrently -n protocol,web \"pnpm --filter @codesentinel/protocol dev\" \"pnpm --filter @codesentinel/web dev\"",
+    "control": "pnpm --filter @codesentinel/control dev",
+    "build": "pnpm -r build",
+    "start": "pnpm --filter @codesentinel/server start",
+    "lint": "pnpm -r lint",
+    "pm2:start": "pnpm build && pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop ecosystem.config.cjs",
+    "pm2:restart": "pm2 restart ecosystem.config.cjs",
+    "pm2:logs": "pm2 logs codesentinel-server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
