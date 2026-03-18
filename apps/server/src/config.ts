@@ -32,6 +32,8 @@ export type AppConfig = {
     bins?: {
       opencode?: string;
       gemini?: string;
+      kimi?: string;
+      qwen?: string;
     };
     checkArgs?: Record<string, string[] | undefined>;
   };

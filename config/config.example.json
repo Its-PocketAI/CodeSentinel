@@ -29,13 +29,21 @@
   "tooling": {
     "bins": {
       "opencode": "",
-      "gemini": ""
+      "gemini": "",
+      "kimi": "",
+      "qwen": ""
     },
     "checkArgs": {
       "opencode": [
         "--version"
       ],
       "gemini": [
+        "--version"
+      ],
+      "kimi": [
+        "--version"
+      ],
+      "qwen": [
         "--version"
       ]
     }

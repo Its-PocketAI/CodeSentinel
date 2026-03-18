@@ -52,8 +52,8 @@ type TreeNode = {
   children?: TreeNode[];
 };
 
-type ToolId = "cursor" | "codex" | "claude" | "opencode" | "gemini" | "cursor-cli" | "command";
-type TermMode = "restricted" | "codex" | "claude" | "opencode" | "gemini" | "cursor" | "cursor-cli";
+type ToolId = "cursor" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor-cli" | "command";
+type TermMode = "restricted" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor" | "cursor-cli";
 
 const TOOL_DEFS: { id: ToolId; label: string; desc: string }[] = [
   { id: "cursor", label: "Cursor Chat", desc: "对话式助手（非终端）" },
@@ -61,6 +61,8 @@ const TOOL_DEFS: { id: ToolId; label: string; desc: string }[] = [
   { id: "claude", label: "Claude", desc: "Claude Code CLI" },
   { id: "opencode", label: "OpenCode", desc: "OpenCode CLI" },
   { id: "gemini", label: "Gemini", desc: "Gemini CLI" },
+  { id: "kimi", label: "Kimi", desc: "Kimi CLI" },
+  { id: "qwen", label: "Qwen", desc: "Qwen Code CLI" },
   { id: "cursor-cli", label: "Cursor CLI", desc: "Cursor 命令行模式" },
   { id: "command", label: "命令行", desc: "安全受限命令行" },
 ];
@@ -195,7 +197,7 @@ function normalizeUiState(input: UiState | null | undefined): UiState {
   return {
     mobileTab: pick(raw.mobileTab, ["explorer", "editor", "terminal", "settings"], DEFAULT_UI_STATE.mobileTab),
     leftPanelTab: pick(raw.leftPanelTab, ["files", "settings", "windows"], DEFAULT_UI_STATE.leftPanelTab),
-    termMode: pick(raw.termMode, ["cursor", "codex", "claude", "opencode", "gemini", "cursor-cli", "restricted"], DEFAULT_UI_STATE.termMode),
+    termMode: pick(raw.termMode, ["cursor", "codex", "claude", "opencode", "gemini", "kimi", "qwen", "cursor-cli", "restricted"], DEFAULT_UI_STATE.termMode),
     cursorMode: pick(raw.cursorMode, ["agent", "plan", "ask"], DEFAULT_UI_STATE.cursorMode),
     cursorCliMode: pick(raw.cursorCliMode, ["agent", "plan", "ask"], DEFAULT_UI_STATE.cursorCliMode),
     editorMode: pick(raw.editorMode, ["edit", "preview"], DEFAULT_UI_STATE.editorMode),
@@ -993,7 +995,7 @@ export function App() {
   const fitRef = useRef<FitAddon | null>(null);
   const termClientRef = useRef<TermClient | null>(null);
   const termSessionIdRef = useRef<string>("");
-  const termSessionModeRef = useRef<"restricted" | "codex" | "claude" | "opencode" | "gemini" | "cursor-cli-agent" | "cursor-cli-plan" | "cursor-cli-ask" | "native" | "">("");
+  const termSessionModeRef = useRef<"restricted" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor-cli-agent" | "cursor-cli-plan" | "cursor-cli-ask" | "native" | "">("");
   const termSessionIsPtyRef = useRef(false);
   const termPendingStdinRef = useRef<string>(""); // buffer keystrokes before a session is ready
   // Buffer term.data that arrives before term.open.resp (sessionId not set yet) so we don't drop initial output
@@ -1066,7 +1068,7 @@ export function App() {
       const cliMode = sub === "plan" || sub === "ask" ? (sub as "plan" | "ask") : "agent";
       return { uiMode: "cursor-cli" as TermMode, cliMode, sessionMode: mode, isPty: true };
     }
-    if (mode === "codex" || mode === "claude" || mode === "opencode" || mode === "gemini") {
+    if (mode === "codex" || mode === "claude" || mode === "opencode" || mode === "gemini" || mode === "kimi" || mode === "qwen") {
       return { uiMode: mode as TermMode, cliMode: fallbackCli, sessionMode: mode, isPty: true };
     }
     if (mode === "restricted-pty") {
@@ -1301,7 +1303,7 @@ export function App() {
     }
 
     void client.stdin(sid, data).catch((e) => {
-      if (termModeRef.current === "codex" || termModeRef.current === "claude" || termModeRef.current === "opencode" || termModeRef.current === "gemini" || termModeRef.current === "cursor-cli") {
+      if (termModeRef.current === "codex" || termModeRef.current === "claude" || termModeRef.current === "opencode" || termModeRef.current === "gemini" || termModeRef.current === "kimi" || termModeRef.current === "qwen" || termModeRef.current === "cursor-cli") {
         term.write(`\r\n${t("[错误] {msg}", { msg: e?.message ?? String(e) })}\r\n`);
       } else {
         term.write(`\r\n${t("[错误] {msg}", { msg: e?.message ?? String(e) })}\r\n$ `);
@@ -2437,7 +2439,7 @@ export function App() {
           }
         } else {
           // Buffer for Codex/Claude/OpenCode/Cursor CLI in case output arrives before open.resp.
-          if (termModeRef.current === "codex" || termModeRef.current === "claude" || termModeRef.current === "opencode" || termModeRef.current === "gemini" || termModeRef.current === "cursor-cli") {
+          if (termModeRef.current === "codex" || termModeRef.current === "claude" || termModeRef.current === "opencode" || termModeRef.current === "gemini" || termModeRef.current === "kimi" || termModeRef.current === "qwen" || termModeRef.current === "cursor-cli") {
             if (!termPendingDataBufferRef.current.has(sid)) termPendingDataBufferRef.current.set(sid, []);
             termPendingDataBufferRef.current.get(sid)!.push(m.data);
           }
@@ -2476,6 +2478,20 @@ export function App() {
           cursorPromptNudgedRef.current = false;
           clearSavedSession(m.sessionId);
           term.write(`\r\n${t("[gemini 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
+        } else if (sessionMode === "kimi") {
+          termSessionIdRef.current = "";
+          termSessionModeRef.current = "";
+          termSessionIsPtyRef.current = false;
+          cursorPromptNudgedRef.current = false;
+          clearSavedSession(m.sessionId);
+          term.write(`\r\n${t("[kimi 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
+        } else if (sessionMode === "qwen") {
+          termSessionIdRef.current = "";
+          termSessionModeRef.current = "";
+          termSessionIsPtyRef.current = false;
+          cursorPromptNudgedRef.current = false;
+          clearSavedSession(m.sessionId);
+          term.write(`\r\n${t("[qwen 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
         } else if (
           sessionMode === "cursor-cli-agent" ||
           sessionMode === "cursor-cli-plan" ||
@@ -2712,6 +2728,8 @@ export function App() {
           | "claude"
           | "opencode"
           | "gemini"
+          | "kimi"
+          | "qwen"
           | "cursor-cli-agent"
           | "cursor-cli-plan"
           | "cursor-cli-ask";
@@ -2721,12 +2739,12 @@ export function App() {
             | "cursor-cli-plan"
             | "cursor-cli-ask";
         } else {
-          actualMode = uiMode; // uiMode here is "restricted" | "codex" | "claude" | "opencode" | "gemini"
+          actualMode = uiMode; // uiMode here is "restricted" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen"
         }
         logTerm("actualMode", { actualMode });
         
         // Reset terminal when switching into codex/claude/opencode/cursor-cli/restricted to avoid mixing outputs.
-        if (uiMode === "codex" || uiMode === "claude" || uiMode === "opencode" || uiMode === "gemini" || uiMode === "cursor-cli" || uiMode === "restricted") {
+        if (uiMode === "codex" || uiMode === "claude" || uiMode === "opencode" || uiMode === "gemini" || uiMode === "kimi" || uiMode === "qwen" || uiMode === "cursor-cli" || uiMode === "restricted") {
           term.reset();
         } else {
           term.write(`\r\n${t("[会话] 正在打开 {path}", { path: openCwd })}\r\n`);
@@ -2742,6 +2760,8 @@ export function App() {
           actualMode === "claude" ||
           actualMode === "opencode" ||
           actualMode === "gemini" ||
+          actualMode === "kimi" ||
+          actualMode === "qwen" ||
           actualMode === "cursor-cli-agent" ||
           actualMode === "cursor-cli-plan" ||
           actualMode === "cursor-cli-ask" ||
@@ -2819,7 +2839,7 @@ export function App() {
           await client.stdin(resp.sessionId, pending).catch(() => {});
         }
 
-        if (!isPtySession && uiMode !== "codex" && uiMode !== "claude" && uiMode !== "opencode" && uiMode !== "gemini" && uiMode !== "cursor-cli") term.write("$ ");
+        if (!isPtySession && uiMode !== "codex" && uiMode !== "claude" && uiMode !== "opencode" && uiMode !== "gemini" && uiMode !== "kimi" && uiMode !== "qwen" && uiMode !== "cursor-cli") term.write("$ ");
       } catch (e: any) {
         lastOpenKeyRef.current = "";
           setStatus(t("[错误] 终端: {msg}", { msg: e?.message ?? String(e) }));
@@ -3465,11 +3485,11 @@ export function App() {
                   : `${topHeight}%`,
               minWidth: isMobile
                 ? undefined
-                : terminalCollapsed
-                  ? collapsedPanelWidth
-                  : termMode === "cursor-cli" || termMode === "claude" || termMode === "opencode" || termMode === "gemini"
-                    ? 520
-                    : 0,
+                  : terminalCollapsed
+                    ? collapsedPanelWidth
+                  : termMode === "cursor-cli" || termMode === "claude" || termMode === "opencode" || termMode === "gemini" || termMode === "kimi" || termMode === "qwen"
+                      ? 520
+                      : 0,
               minHeight: isMobile ? "65dvh" : undefined,
             }}
           >

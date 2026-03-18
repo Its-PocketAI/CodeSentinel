@@ -11,6 +11,8 @@ import { CursorCliManager } from "./cursorCliManager.js";
 import { ClaudeCliManager } from "./claudeCliManager.js";
 import { OpencodeCliManager } from "./opencodeCliManager.js";
 import { GeminiCliManager } from "./geminiCliManager.js";
+import { KimiCliManager } from "./kimiCliManager.js";
+import { QwenCliManager } from "./qwenCliManager.js";
 import { PtyRestrictedManager } from "./ptyRestrictedManager.js";
 import type { RunAsUser } from "../userRunAs.js";
 
@@ -44,7 +46,7 @@ export function attachTermWs(opts: {
   maxSessions: number;
   termLogMaxBytes?: number;
   resolveRunAs?: (cwd: string) => RunAsUser | null;
-  tooling?: { bins?: { opencode?: string; gemini?: string } };
+  tooling?: { bins?: { opencode?: string; gemini?: string; kimi?: string; qwen?: string } };
   validateCwd: (cwd: string) => Promise<string>;
   authorize?: (req: http.IncomingMessage) => Promise<{ ok: true } | { ok: false; error?: string }>;
 }) {
@@ -166,6 +168,20 @@ export function attachTermWs(opts: {
     termLogMaxBytes: opts.termLogMaxBytes,
     binOverride: opts.tooling?.bins?.gemini,
   });
+  const kimiCliMgr = new KimiCliManager({
+    maxSessions: opts.maxSessions,
+    validateCwd: opts.validateCwd,
+    send: (m) => broadcast(m as TermServerMsg),
+    termLogMaxBytes: opts.termLogMaxBytes,
+    binOverride: opts.tooling?.bins?.kimi,
+  });
+  const qwenCliMgr = new QwenCliManager({
+    maxSessions: opts.maxSessions,
+    validateCwd: opts.validateCwd,
+    send: (m) => broadcast(m as TermServerMsg),
+    termLogMaxBytes: opts.termLogMaxBytes,
+    binOverride: opts.tooling?.bins?.qwen,
+  });
 
   wss.on("connection", async (ws, req) => {
     if (opts.authorize) {
@@ -213,6 +229,8 @@ export function attachTermWs(opts: {
             | "claude"
             | "opencode"
             | "gemini"
+            | "kimi"
+            | "qwen"
             | "cursor-cli-agent"
             | "cursor-cli-plan"
             | "cursor-cli-ask";
@@ -297,6 +315,22 @@ export function attachTermWs(opts: {
               send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode: "gemini" });
             } catch (e: any) {
               return fail("term.open", `Gemini CLI failed: ${e?.message ?? String(e)}`);
+            }
+          } else if (mode === "kimi") {
+            try {
+              const s = await kimiCliMgr.open(realCwd, cols, rows, runAs);
+              registerSession(s.id, s.cwd, "kimi", kimiCliMgr, ws);
+              send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode: "kimi" });
+            } catch (e: any) {
+              return fail("term.open", `Kimi CLI failed: ${e?.message ?? String(e)}`);
+            }
+          } else if (mode === "qwen") {
+            try {
+              const s = await qwenCliMgr.open(realCwd, cols, rows, runAs);
+              registerSession(s.id, s.cwd, "qwen", qwenCliMgr, ws);
+              send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode: "qwen" });
+            } catch (e: any) {
+              return fail("term.open", `Qwen Code CLI failed: ${e?.message ?? String(e)}`);
             }
           } else {
             return fail("term.open", `Unknown mode: ${mode}`);

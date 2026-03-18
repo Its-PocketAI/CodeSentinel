@@ -2,14 +2,14 @@
 
 **语言**：中文 | [English](./README.md)
 
-CodeSentinel 是一款本机优先的 Web IDE：目录树 + 编辑器 + 受限终端，并集成 Cursor CLI（`agent`）、Codex CLI、Claude Code CLI（`claude`）与 OpenCode CLI（`opencode`）。
+CodeSentinel 是一款本机优先的 Web IDE：目录树 + 编辑器 + 受限终端，并集成 Cursor CLI（`agent`）、Codex CLI、Claude Code CLI（`claude`）、OpenCode CLI（`opencode`）、Gemini CLI（`gemini`）、Kimi CLI（`kimi`）与 Qwen Code CLI（`qwen`）。
 
 ---
 
 ## 主要特性
 
 - 本地文件树与编辑器，默认安全访问。
-- 受限终端模式（受限 / Codex / Claude / OpenCode / Cursor）。
+- 受限终端模式（受限 / Codex / Claude / OpenCode / Gemini / Kimi / Qwen / Cursor）。
 - 前后端分离，开发端口清晰。
 - 内置登录（密码 + Token）、失败锁定、验证码与加密传输。
 - Linux 可按项目指定终端运行用户。
@@ -127,6 +127,10 @@ cp config/config.example.json config/config.json
 - 前端开发：`VITE_PORT`（默认 3989）
 - 前端 API 基址：`VITE_API_BASE`（LAN/代理）
 
+工具检测：
+- `tooling.bins.<tool>`：指定 CLI 可执行文件路径（如 `tooling.bins.opencode`）。
+- `tooling.checkArgs.<tool>`：指定检测参数（如 `["--version"]`）。
+
 ---
 
 ## 登录与安全
@@ -175,6 +179,8 @@ cp config/config.example.json config/config.json
 - Claude Code CLI (`claude`)
 - OpenCode CLI (`opencode`)
 - Gemini CLI (`gemini`)
+- Kimi CLI (`kimi`)
+- Qwen Code CLI (`qwen`)
 
 示例：
 ```bash
@@ -192,6 +198,12 @@ opencode --version
 
 npm install -g @google/gemini-cli
 gemini --version
+
+curl -LsSf https://code.kimi.com/install.sh | bash
+kimi --version
+
+curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.sh | bash
+qwen --version
 ```
 
 ---

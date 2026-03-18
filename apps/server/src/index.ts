@@ -207,7 +207,7 @@ async function checkCmdVersion(bin: string, args: string[] = ["--version"], over
   }
 }
 
-type SetupInstallTool = "agent" | "rg" | "codex" | "claude" | "opencode" | "gemini";
+type SetupInstallTool = "agent" | "rg" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen";
 
 function getInstallHint(tool: SetupInstallTool) {
   const hints = getInstallHintsByPlatform(tool);
@@ -247,6 +247,20 @@ function getInstallHintsByPlatform(tool: SetupInstallTool): { darwin: string; wi
   if (tool === "gemini") {
     const cmd = "npm install -g @google/gemini-cli";
     return { darwin: cmd, win32: cmd, linux: cmd };
+  }
+  if (tool === "kimi") {
+    return {
+      darwin: "curl -LsSf https://code.kimi.com/install.sh | bash",
+      win32: "Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression",
+      linux: "curl -LsSf https://code.kimi.com/install.sh | bash",
+    };
+  }
+  if (tool === "qwen") {
+    return {
+      darwin: "curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.sh | bash",
+      win32: "curl -fsSL -o %TEMP%\\install-qwen.bat https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.bat && %TEMP%\\install-qwen.bat",
+      linux: "curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.sh | bash",
+    };
   }
   // codex (same on all platforms)
   const codexCmd = "npm i -g @openai/codex";
@@ -306,6 +320,28 @@ async function canAutoInstall(tool: SetupInstallTool): Promise<{ ok: true } | { 
   if (tool === "gemini") {
     const hasNpm = Boolean(await whichBin(process.platform === "win32" ? "npm.cmd" : "npm")) || Boolean(await whichBin("npm"));
     if (!hasNpm) return { ok: false, reason: "npm not found. Install Node.js (includes npm) first." };
+    return { ok: true };
+  }
+  if (tool === "kimi") {
+    if (process.platform === "win32") {
+      const hasPs = Boolean(await whichBin("powershell"));
+      if (!hasPs) return { ok: false, reason: "Missing PowerShell (powershell.exe) in PATH" };
+      return { ok: true };
+    }
+    const hasCurl = Boolean(await whichBin("curl"));
+    const hasBash = Boolean(await whichBin("bash"));
+    if (!hasCurl || !hasBash) return { ok: false, reason: "Missing curl/bash. Install Kimi CLI manually." };
+    return { ok: true };
+  }
+  if (tool === "qwen") {
+    if (process.platform === "win32") {
+      const hasCurl = Boolean(await whichBin("curl"));
+      if (!hasCurl) return { ok: false, reason: "Missing curl. Install Qwen Code CLI manually." };
+      return { ok: true };
+    }
+    const hasCurl = Boolean(await whichBin("curl"));
+    const hasBash = Boolean(await whichBin("bash"));
+    if (!hasCurl || !hasBash) return { ok: false, reason: "Missing curl/bash. Install Qwen Code CLI manually." };
     return { ok: true };
   }
 
@@ -370,6 +406,26 @@ async function runAutoInstall(tool: SetupInstallTool) {
   }
   if (tool === "gemini") {
     return await execa("npm", ["install", "-g", "@google/gemini-cli"], { timeout, maxBuffer: 10 * 1024 * 1024, env });
+  }
+  if (tool === "kimi") {
+    if (process.platform === "win32") {
+      const cmd = "Invoke-RestMethod https://code.kimi.com/install.ps1 | Invoke-Expression";
+      return await execa("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", cmd], {
+        timeout,
+        maxBuffer: 10 * 1024 * 1024,
+        env,
+      });
+    }
+    const cmd = "curl -LsSf https://code.kimi.com/install.sh | bash";
+    return await execa("bash", ["-lc", cmd], { timeout, maxBuffer: 10 * 1024 * 1024, env });
+  }
+  if (tool === "qwen") {
+    if (process.platform === "win32") {
+      const cmd = "curl -fsSL -o %TEMP%\\install-qwen.bat https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.bat && %TEMP%\\install-qwen.bat";
+      return await execa("cmd", ["/c", cmd], { timeout, maxBuffer: 10 * 1024 * 1024, env });
+    }
+    const cmd = "curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.sh | bash";
+    return await execa("bash", ["-lc", cmd], { timeout, maxBuffer: 10 * 1024 * 1024, env });
   }
 
   // codex
@@ -458,13 +514,15 @@ async function main() {
     const raw = toolingBins?.[name];
     return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
   };
-  const uiToolIds = new Set(["cursor", "codex", "claude", "opencode", "gemini", "cursor-cli", "command"]);
+  const uiToolIds = new Set(["cursor", "codex", "claude", "opencode", "gemini", "kimi", "qwen", "cursor-cli", "command"]);
   const defaultUiTools = [
     { id: "cursor", enabled: true },
     { id: "codex", enabled: true },
     { id: "claude", enabled: true },
     { id: "opencode", enabled: true },
     { id: "gemini", enabled: true },
+    { id: "kimi", enabled: true },
+    { id: "qwen", enabled: true },
     { id: "cursor-cli", enabled: true },
     { id: "command", enabled: true },
   ];
@@ -513,7 +571,7 @@ async function main() {
     return {
       mobileTab: pick(raw.mobileTab, ["explorer", "editor", "terminal", "settings"], defaultUiState.mobileTab),
       leftPanelTab: pick(raw.leftPanelTab, ["files", "settings", "windows"], defaultUiState.leftPanelTab),
-      termMode: pick(raw.termMode, ["cursor", "codex", "claude", "opencode", "gemini", "cursor-cli", "restricted"], defaultUiState.termMode),
+      termMode: pick(raw.termMode, ["cursor", "codex", "claude", "opencode", "gemini", "kimi", "qwen", "cursor-cli", "restricted"], defaultUiState.termMode),
       cursorMode: pick(raw.cursorMode, ["agent", "plan", "ask"], defaultUiState.cursorMode),
       cursorCliMode: pick(raw.cursorCliMode, ["agent", "plan", "ask"], defaultUiState.cursorCliMode),
       editorMode: pick(raw.editorMode, ["edit", "preview"], defaultUiState.editorMode),
@@ -1076,6 +1134,8 @@ async function main() {
         claude: await checkOne("claude"),
         codex: await checkOne("codex"),
         gemini: await checkOne("gemini"),
+        kimi: await checkOne("kimi"),
+        qwen: await checkOne("qwen"),
         cursor: await checkOne("cursor"),
         agent: await checkOne("agent"),
         rg: await checkOne("rg"),
@@ -1113,6 +1173,8 @@ async function main() {
           rg: getInstallHintsByPlatform("rg"),
           codex: getInstallHintsByPlatform("codex"),
           gemini: getInstallHintsByPlatform("gemini"),
+          kimi: getInstallHintsByPlatform("kimi"),
+          qwen: getInstallHintsByPlatform("qwen"),
         },
       });
     } catch (e: any) {
@@ -1150,7 +1212,7 @@ async function main() {
     if (!isLocalReq(req)) return res.status(403).json({ ok: false, error: "仅允许本机访问" });
     try {
       const tool = String((req.body as any)?.tool ?? "") as SetupInstallTool;
-      if (tool !== "agent" && tool !== "rg" && tool !== "codex" && tool !== "claude" && tool !== "opencode" && tool !== "gemini") {
+      if (tool !== "agent" && tool !== "rg" && tool !== "codex" && tool !== "claude" && tool !== "opencode" && tool !== "gemini" && tool !== "kimi" && tool !== "qwen") {
         return res.status(400).json({ ok: false, error: "Invalid tool" });
       }
 
@@ -1172,7 +1234,11 @@ async function main() {
                 ? await checkCmdVersion("opencode", resolveCheckArgs("opencode"), resolveCheckBin("opencode"))
                 : tool === "gemini"
                   ? await checkCmdVersion("gemini", resolveCheckArgs("gemini"), resolveCheckBin("gemini"))
-                  : await checkCmdVersion("codex", resolveCheckArgs("codex"), resolveCheckBin("codex"));
+                  : tool === "kimi"
+                    ? await checkCmdVersion("kimi", resolveCheckArgs("kimi"), resolveCheckBin("kimi"))
+                    : tool === "qwen"
+                      ? await checkCmdVersion("qwen", resolveCheckArgs("qwen"), resolveCheckBin("qwen"))
+                      : await checkCmdVersion("codex", resolveCheckArgs("codex"), resolveCheckBin("codex"));
 
       res.json({
         ok: true,
@@ -2241,7 +2307,14 @@ async function main() {
     limits: commandRuntime.limits,
     termLogMaxBytes,
     resolveRunAs,
-    tooling: { bins: { opencode: resolveCheckBin("opencode"), gemini: resolveCheckBin("gemini") } },
+    tooling: {
+      bins: {
+        opencode: resolveCheckBin("opencode"),
+        gemini: resolveCheckBin("gemini"),
+        kimi: resolveCheckBin("kimi"),
+        qwen: resolveCheckBin("qwen"),
+      },
+    },
     authorize: authEnabled
       ? async (req) => {
           const token = getWsToken(req);

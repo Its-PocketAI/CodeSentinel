@@ -2,14 +2,14 @@
 
 **Language**: English | [中文](./README.zh-CN.md)
 
-CodeSentinel is a local-first Web IDE for secure project operations: file tree + editor + restricted terminal, with Cursor CLI (`agent`), Codex CLI, Claude Code CLI (`claude`), and OpenCode CLI (`opencode`) integration.
+CodeSentinel is a local-first Web IDE for secure project operations: file tree + editor + restricted terminal, with Cursor CLI (`agent`), Codex CLI, Claude Code CLI (`claude`), OpenCode CLI (`opencode`), Gemini CLI (`gemini`), Kimi CLI (`kimi`), and Qwen Code CLI (`qwen`) integration.
 
 ---
 
 ## Highlights
 
 - Local file tree and editor, safe by default.
-- Restricted terminal modes (Restricted / Codex / Claude / OpenCode / Cursor).
+- Restricted terminal modes (Restricted / Codex / Claude / OpenCode / Gemini / Kimi / Qwen / Cursor).
 - Frontend/Backend separated, clear dev ports.
 - Built-in auth (password + token), rate limit, captcha, encrypted login payload.
 - Optional per-project Linux run-as user.
@@ -127,6 +127,10 @@ Ports:
 - Frontend dev port: `VITE_PORT` (default 3989)
 - Frontend API base: `VITE_API_BASE` (LAN/proxy)
 
+Tooling detection:
+- `tooling.bins.<tool>`: override CLI binary path (e.g. `tooling.bins.opencode`).
+- `tooling.checkArgs.<tool>`: override version check args (e.g. `["--version"]`).
+
 ---
 
 ## Auth & Security
@@ -175,6 +179,8 @@ Recommended tools:
 - Claude Code CLI (`claude`)
 - OpenCode CLI (`opencode`)
 - Gemini CLI (`gemini`)
+- Kimi CLI (`kimi`)
+- Qwen Code CLI (`qwen`)
 
 Examples:
 ```bash
@@ -192,6 +198,12 @@ opencode --version
 
 npm install -g @google/gemini-cli
 gemini --version
+
+curl -LsSf https://code.kimi.com/install.sh | bash
+kimi --version
+
+curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.sh | bash
+qwen --version
 ```
 
 ---
