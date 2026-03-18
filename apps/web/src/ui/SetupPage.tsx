@@ -11,13 +11,13 @@ type SetupCheck = {
   platform?: string;
   roots?: string[];
   defaultRoot?: string;
-  tools?: { agent: ToolStatus; codex: ToolStatus; claude: ToolStatus; opencode: ToolStatus; cursor: ToolStatus; rg: ToolStatus };
-  installHints?: { agent: InstallHintsByPlatform; rg: InstallHintsByPlatform; codex: InstallHintsByPlatform; claude: InstallHintsByPlatform; opencode: InstallHintsByPlatform };
+  tools?: { agent: ToolStatus; codex: ToolStatus; claude: ToolStatus; opencode: ToolStatus; gemini: ToolStatus; cursor: ToolStatus; rg: ToolStatus };
+  installHints?: { agent: InstallHintsByPlatform; rg: InstallHintsByPlatform; codex: InstallHintsByPlatform; claude: InstallHintsByPlatform; opencode: InstallHintsByPlatform; gemini: InstallHintsByPlatform };
 };
 
 const STEPS = [
   { id: 1, titleKey: "选择根目录" },
-  { id: 2, titleKey: "安装 Cursor / Codex / Claude / OpenCode（手动）" },
+  { id: 2, titleKey: "安装 Cursor / Codex / Claude / OpenCode / Gemini（手动）" },
   { id: 3, titleKey: "初始化数据库" },
 ] as const;
 
@@ -282,11 +282,11 @@ export function SetupPage() {
               </>
             )}
 
-            {/* 第二步：安装 Cursor / Codex / Claude / OpenCode（仅手动安装说明） */}
+            {/* 第二步：安装 Cursor / Codex / Claude / OpenCode / Gemini（仅手动安装说明） */}
             {currentStep === 2 && (
               <>
-                <h2>{t("第二步：安装 Cursor / Codex / Claude / OpenCode（手动安装）")}</h2>
-                <p>{t("以下工具用于 Cursor Chat、Codex/Claude/OpenCode 终端等功能。请根据当前检测状态，在终端中按下方说明手动安装。未安装也可跳过，但相关功能将无法使用。")}</p>
+                <h2>{t("第二步：安装 Cursor / Codex / Claude / OpenCode / Gemini（手动安装）")}</h2>
+                <p>{t("以下工具用于 Cursor Chat、Codex/Claude/OpenCode/Gemini 终端等功能。请根据当前检测状态，在终端中按下方说明手动安装。未安装也可跳过，但相关功能将无法使用。")}</p>
                 <div className="setupToolGrid">
                   {tools?.agent !== undefined && (
                     <div className="setupToolCard">
@@ -384,6 +384,30 @@ export function SetupPage() {
                       )}
                     </div>
                   )}
+                  {tools?.gemini !== undefined && (
+                    <div className="setupToolCard">
+                      <div className="setupToolRow">
+                        <span className="setupToolName">Gemini CLI</span>
+                        {tools.gemini.ok ? (
+                          <span className="setupToolStatus setupStatusOk">✓ {t("已安装")}{tools.gemini.version ? ` ${tools.gemini.version}` : null}</span>
+                        ) : (
+                          <span className="setupToolStatus setupStatusFail">✗ {t("未安装")}</span>
+                        )}
+                      </div>
+                      {!tools.gemini.ok && hints?.gemini && (
+                        <div className="setupToolStatusBody">
+                          <div className="setupManualBlock">
+                            <span className="setupManualLabel">{t("安装方法")}</span>
+                            <ul className="setupPlatformHints">
+                              <li><span className="setupPlatformLabel">macOS</span><code className="setupToolHint">{hints.gemini.darwin}</code></li>
+                              <li><span className="setupPlatformLabel">Windows</span><code className="setupToolHint">{hints.gemini.win32}</code></li>
+                              <li><span className="setupPlatformLabel">Linux</span><code className="setupToolHint">{hints.gemini.linux}</code></li>
+                            </ul>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {tools?.rg !== undefined && (
                     <div className="setupToolCard">
                       <div className="setupToolRow">
@@ -413,7 +437,7 @@ export function SetupPage() {
                   <button type="button" className="setupSkipBtn" onClick={() => setStep2Skipped(true)}>
                     {t("跳过此步")}
                   </button>
-                  <span className="setupSkipHint">{t("跳过则无法正常使用 Cursor Chat、Codex/Claude/OpenCode 终端等功能。")}</span>
+                  <span className="setupSkipHint">{t("跳过则无法正常使用 Cursor Chat、Codex/Claude/OpenCode/Gemini 终端等功能。")}</span>
                 </div>
               </>
             )}

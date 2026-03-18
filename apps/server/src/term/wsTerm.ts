@@ -10,6 +10,7 @@ import { PtyCodexManager } from "./ptyCodexManager.js";
 import { CursorCliManager } from "./cursorCliManager.js";
 import { ClaudeCliManager } from "./claudeCliManager.js";
 import { OpencodeCliManager } from "./opencodeCliManager.js";
+import { GeminiCliManager } from "./geminiCliManager.js";
 import { PtyRestrictedManager } from "./ptyRestrictedManager.js";
 import type { RunAsUser } from "../userRunAs.js";
 
@@ -43,6 +44,7 @@ export function attachTermWs(opts: {
   maxSessions: number;
   termLogMaxBytes?: number;
   resolveRunAs?: (cwd: string) => RunAsUser | null;
+  tooling?: { bins?: { opencode?: string; gemini?: string } };
   validateCwd: (cwd: string) => Promise<string>;
   authorize?: (req: http.IncomingMessage) => Promise<{ ok: true } | { ok: false; error?: string }>;
 }) {
@@ -155,6 +157,14 @@ export function attachTermWs(opts: {
     validateCwd: opts.validateCwd,
     send: (m) => broadcast(m as TermServerMsg),
     termLogMaxBytes: opts.termLogMaxBytes,
+    binOverride: opts.tooling?.bins?.opencode,
+  });
+  const geminiCliMgr = new GeminiCliManager({
+    maxSessions: opts.maxSessions,
+    validateCwd: opts.validateCwd,
+    send: (m) => broadcast(m as TermServerMsg),
+    termLogMaxBytes: opts.termLogMaxBytes,
+    binOverride: opts.tooling?.bins?.gemini,
   });
 
   wss.on("connection", async (ws, req) => {
@@ -202,6 +212,7 @@ export function attachTermWs(opts: {
             | "codex"
             | "claude"
             | "opencode"
+            | "gemini"
             | "cursor-cli-agent"
             | "cursor-cli-plan"
             | "cursor-cli-ask";
@@ -278,6 +289,14 @@ export function attachTermWs(opts: {
               send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode: "opencode" });
             } catch (e: any) {
               return fail("term.open", `OpenCode failed: ${e?.message ?? String(e)}`);
+            }
+          } else if (mode === "gemini") {
+            try {
+              const s = await geminiCliMgr.open(realCwd, cols, rows, runAs);
+              registerSession(s.id, s.cwd, "gemini", geminiCliMgr, ws);
+              send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode: "gemini" });
+            } catch (e: any) {
+              return fail("term.open", `Gemini CLI failed: ${e?.message ?? String(e)}`);
             }
           } else {
             return fail("term.open", `Unknown mode: ${mode}`);

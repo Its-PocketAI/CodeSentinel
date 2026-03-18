@@ -148,8 +148,17 @@ async function checkAgentCli() {
   }
 }
 
-async function checkCmdVersion(bin: string, args: string[] = ["--version"]) {
-  let p: string | null = await whichBin(bin);
+async function checkCmdVersion(bin: string, args: string[] = ["--version"], overrideBin?: string) {
+  const override = typeof overrideBin === "string" && overrideBin.trim() ? overrideBin.trim() : "";
+  let p: string | null = null;
+  if (override) {
+    if (fileExists(override)) {
+      p = override;
+    } else {
+      return { ok: false as const, path: override, version: null as string | null, error: "not found" };
+    }
+  }
+  if (!p) p = await whichBin(bin);
   // Windows: 若 PATH 中未找到，尝试常见安装目录（用户安装后可能未重启服务，PATH 未更新）
   if (!p && process.platform === "win32") {
     const extraDirs = bin === "agent" ? getAgentCandidatePathsWin() : bin === "rg" ? getRgCandidatePathsWin() : [];
@@ -198,7 +207,7 @@ async function checkCmdVersion(bin: string, args: string[] = ["--version"]) {
   }
 }
 
-type SetupInstallTool = "agent" | "rg" | "codex" | "claude" | "opencode";
+type SetupInstallTool = "agent" | "rg" | "codex" | "claude" | "opencode" | "gemini";
 
 function getInstallHint(tool: SetupInstallTool) {
   const hints = getInstallHintsByPlatform(tool);
@@ -234,6 +243,10 @@ function getInstallHintsByPlatform(tool: SetupInstallTool): { darwin: string; wi
       win32: "npm install -g opencode-ai",
       linux: "curl -fsSL https://opencode.ai/install | bash (or: npm install -g opencode-ai)",
     };
+  }
+  if (tool === "gemini") {
+    const cmd = "npm install -g @google/gemini-cli";
+    return { darwin: cmd, win32: cmd, linux: cmd };
   }
   // codex (same on all platforms)
   const codexCmd = "npm i -g @openai/codex";
@@ -286,6 +299,11 @@ async function canAutoInstall(tool: SetupInstallTool): Promise<{ ok: true } | { 
   }
 
   if (tool === "opencode") {
+    const hasNpm = Boolean(await whichBin(process.platform === "win32" ? "npm.cmd" : "npm")) || Boolean(await whichBin("npm"));
+    if (!hasNpm) return { ok: false, reason: "npm not found. Install Node.js (includes npm) first." };
+    return { ok: true };
+  }
+  if (tool === "gemini") {
     const hasNpm = Boolean(await whichBin(process.platform === "win32" ? "npm.cmd" : "npm")) || Boolean(await whichBin("npm"));
     if (!hasNpm) return { ok: false, reason: "npm not found. Install Node.js (includes npm) first." };
     return { ok: true };
@@ -349,6 +367,9 @@ async function runAutoInstall(tool: SetupInstallTool) {
 
   if (tool === "opencode") {
     return await execa("npm", ["install", "-g", "opencode-ai"], { timeout, maxBuffer: 10 * 1024 * 1024, env });
+  }
+  if (tool === "gemini") {
+    return await execa("npm", ["install", "-g", "@google/gemini-cli"], { timeout, maxBuffer: 10 * 1024 * 1024, env });
   }
 
   // codex
@@ -427,12 +448,23 @@ async function main() {
       authKeyPair = null;
     }
   }
-  const uiToolIds = new Set(["cursor", "codex", "claude", "opencode", "cursor-cli", "command"]);
+  const toolingBins = cfg.tooling?.bins ?? {};
+  const toolingCheckArgs = cfg.tooling?.checkArgs ?? {};
+  const resolveCheckArgs = (name: string, fallback: string[] = ["--version"]) => {
+    const raw = toolingCheckArgs?.[name];
+    return Array.isArray(raw) && raw.length > 0 ? raw : fallback;
+  };
+  const resolveCheckBin = (name: string) => {
+    const raw = toolingBins?.[name];
+    return typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+  };
+  const uiToolIds = new Set(["cursor", "codex", "claude", "opencode", "gemini", "cursor-cli", "command"]);
   const defaultUiTools = [
     { id: "cursor", enabled: true },
     { id: "codex", enabled: true },
     { id: "claude", enabled: true },
     { id: "opencode", enabled: true },
+    { id: "gemini", enabled: true },
     { id: "cursor-cli", enabled: true },
     { id: "command", enabled: true },
   ];
@@ -481,7 +513,7 @@ async function main() {
     return {
       mobileTab: pick(raw.mobileTab, ["explorer", "editor", "terminal", "settings"], defaultUiState.mobileTab),
       leftPanelTab: pick(raw.leftPanelTab, ["files", "settings", "windows"], defaultUiState.leftPanelTab),
-      termMode: pick(raw.termMode, ["cursor", "codex", "claude", "opencode", "cursor-cli", "restricted"], defaultUiState.termMode),
+      termMode: pick(raw.termMode, ["cursor", "codex", "claude", "opencode", "gemini", "cursor-cli", "restricted"], defaultUiState.termMode),
       cursorMode: pick(raw.cursorMode, ["agent", "plan", "ask"], defaultUiState.cursorMode),
       cursorCliMode: pick(raw.cursorCliMode, ["agent", "plan", "ask"], defaultUiState.cursorCliMode),
       editorMode: pick(raw.editorMode, ["edit", "preview"], defaultUiState.editorMode),
@@ -1029,9 +1061,11 @@ async function main() {
 
   app.get("/api/setup/check", async (_req, res) => {
     try {
-      const checkOne = async (cmd: string, args: string[] = ["--version"]) => {
+      const checkOne = async (cmd: string, args?: string[]) => {
         try {
-          return await checkCmdVersion(cmd, args);
+          const resolvedArgs = args ?? resolveCheckArgs(cmd);
+          const overrideBin = resolveCheckBin(cmd);
+          return await checkCmdVersion(cmd, resolvedArgs, overrideBin);
         } catch (e) {
           return { ok: false as const, path: null as string | null, version: null as string | null, error: (e as Error)?.message ?? String(e) };
         }
@@ -1041,6 +1075,7 @@ async function main() {
         opencode: await checkOne("opencode"),
         claude: await checkOne("claude"),
         codex: await checkOne("codex"),
+        gemini: await checkOne("gemini"),
         cursor: await checkOne("cursor"),
         agent: await checkOne("agent"),
         rg: await checkOne("rg"),
@@ -1077,6 +1112,7 @@ async function main() {
           agent: getInstallHintsByPlatform("agent"),
           rg: getInstallHintsByPlatform("rg"),
           codex: getInstallHintsByPlatform("codex"),
+          gemini: getInstallHintsByPlatform("gemini"),
         },
       });
     } catch (e: any) {
@@ -1114,7 +1150,7 @@ async function main() {
     if (!isLocalReq(req)) return res.status(403).json({ ok: false, error: "仅允许本机访问" });
     try {
       const tool = String((req.body as any)?.tool ?? "") as SetupInstallTool;
-      if (tool !== "agent" && tool !== "rg" && tool !== "codex" && tool !== "claude" && tool !== "opencode") {
+      if (tool !== "agent" && tool !== "rg" && tool !== "codex" && tool !== "claude" && tool !== "opencode" && tool !== "gemini") {
         return res.status(400).json({ ok: false, error: "Invalid tool" });
       }
 
@@ -1127,14 +1163,16 @@ async function main() {
 
       const after =
         tool === "agent"
-          ? await checkCmdVersion("agent", ["--version"])
+          ? await checkCmdVersion("agent", resolveCheckArgs("agent"), resolveCheckBin("agent"))
           : tool === "rg"
-            ? await checkCmdVersion("rg", ["--version"])
+            ? await checkCmdVersion("rg", resolveCheckArgs("rg"), resolveCheckBin("rg"))
             : tool === "claude"
-              ? await checkCmdVersion("claude", ["--version"])
+              ? await checkCmdVersion("claude", resolveCheckArgs("claude"), resolveCheckBin("claude"))
               : tool === "opencode"
-                ? await checkCmdVersion("opencode", ["--version"])
-              : await checkCmdVersion("codex", ["--version"]);
+                ? await checkCmdVersion("opencode", resolveCheckArgs("opencode"), resolveCheckBin("opencode"))
+                : tool === "gemini"
+                  ? await checkCmdVersion("gemini", resolveCheckArgs("gemini"), resolveCheckBin("gemini"))
+                  : await checkCmdVersion("codex", resolveCheckArgs("codex"), resolveCheckBin("codex"));
 
       res.json({
         ok: true,
@@ -2203,6 +2241,7 @@ async function main() {
     limits: commandRuntime.limits,
     termLogMaxBytes,
     resolveRunAs,
+    tooling: { bins: { opencode: resolveCheckBin("opencode"), gemini: resolveCheckBin("gemini") } },
     authorize: authEnabled
       ? async (req) => {
           const token = getWsToken(req);

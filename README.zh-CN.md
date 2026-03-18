@@ -174,6 +174,7 @@ cp config/config.example.json config/config.json
 - Codex CLI (`codex`)
 - Claude Code CLI (`claude`)
 - OpenCode CLI (`opencode`)
+- Gemini CLI (`gemini`)
 
 示例：
 ```bash
@@ -188,6 +189,9 @@ claude --version
 
 curl -fsSL https://opencode.ai/install | bash
 opencode --version
+
+npm install -g @google/gemini-cli
+gemini --version
 ```
 
 ---

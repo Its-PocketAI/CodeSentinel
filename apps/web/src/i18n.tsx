@@ -39,10 +39,11 @@ const EN: Record<string, string> = {
   "验证码已过期，请重试": "Captcha expired. Try again",
   "无效的 JSON": "Invalid JSON",
   "打开键盘": "Open keyboard",
+  "Gemini CLI": "Gemini CLI",
 
   "配置与安装": "Setup & Install",
   "选择根目录": "Select root folders",
-  "安装 Cursor / Codex / Claude / OpenCode（手动）": "Install Cursor / Codex / Claude / OpenCode (Manual)",
+  "安装 Cursor / Codex / Claude / OpenCode / Gemini（手动）": "Install Cursor / Codex / Claude / OpenCode / Gemini (Manual)",
   "初始化数据库": "Initialize database",
   "正在检测环境…": "Detecting environment…",
   "无法连接后端：{msg}": "Unable to connect backend: {msg}",
@@ -68,9 +69,9 @@ const EN: Record<string, string> = {
   "已添加 {added} 个，失败 {failed} 个：{detail}": "Added {added}, failed {failed}: {detail}",
   "添加失败": "Add failed",
   "请求失败": "Request failed",
-  "第二步：安装 Cursor / Codex / Claude / OpenCode（手动安装）": "Step 2: Install Cursor / Codex / Claude / OpenCode (Manual)",
-  "以下工具用于 Cursor Chat、Codex/Claude/OpenCode 终端等功能。请根据当前检测状态，在终端中按下方说明手动安装。未安装也可跳过，但相关功能将无法使用。":
-    "These tools enable Cursor Chat and Codex/Claude/OpenCode terminals. Install them manually in a terminal as instructed. You may skip, but related features will be unavailable.",
+  "第二步：安装 Cursor / Codex / Claude / OpenCode / Gemini（手动安装）": "Step 2: Install Cursor / Codex / Claude / OpenCode / Gemini (Manual)",
+  "以下工具用于 Cursor Chat、Codex/Claude/OpenCode/Gemini 终端等功能。请根据当前检测状态，在终端中按下方说明手动安装。未安装也可跳过，但相关功能将无法使用。":
+    "These tools enable Cursor Chat and Codex/Claude/OpenCode/Gemini terminals. Install them manually in a terminal as instructed. You may skip, but related features will be unavailable.",
   "安装方法": "Install",
   "✓ 已安装 {version}": "✓ Installed {version}",
   "✓ 已安装": "✓ Installed",
@@ -89,8 +90,8 @@ const EN: Record<string, string> = {
   "初始化失败": "Initialization failed",
   "完成失败": "Finalize failed",
   "请先添加至少一个根目录": "Please add at least one root folder",
-  "跳过则无法正常使用 Cursor Chat、Codex/Claude/OpenCode 终端等功能。":
-    "Skipping disables Cursor Chat and Codex/Claude/OpenCode terminals.",
+  "跳过则无法正常使用 Cursor Chat、Codex/Claude/OpenCode/Gemini 终端等功能。":
+    "Skipping disables Cursor Chat and Codex/Claude/OpenCode/Gemini terminals.",
   "初始化本地数据库，用于保存聊天记录、工作区等。":
     "Initialize the local database to store chat history and workspaces.",
   "数据库已初始化": "Database initialized",
@@ -144,6 +145,7 @@ const EN: Record<string, string> = {
   "[codex 已退出 {code}]": "[codex exited {code}]",
   "[claude 已退出 {code}]": "[claude exited {code}]",
   "[opencode 已退出 {code}]": "[opencode exited {code}]",
+  "[gemini 已退出 {code}]": "[gemini exited {code}]",
   "[cursor-cli 已退出 {code}]": "[cursor-cli exited {code}]",
   "[restricted PTY 已退出 {code}]": "[restricted PTY exited {code}]",
   "会话不存在或已结束": "Session not found or ended",

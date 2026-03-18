@@ -28,6 +28,13 @@ export type AppConfig = {
   /** 默认项目用户（root 启动时用于推荐工作区与默认运行身份） */
   defaultProjectUser?: string;
   projectUsers?: { root: string; username: string; enabled?: boolean }[];
+  tooling?: {
+    bins?: {
+      opencode?: string;
+      gemini?: string;
+    };
+    checkArgs?: Record<string, string[] | undefined>;
+  };
   limits?: {
     timeoutSec?: number;
     maxOutputKB?: number;
