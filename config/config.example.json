@@ -26,6 +26,20 @@
       "enabled": false
     }
   ],
+  "tooling": {
+    "bins": {
+      "opencode": "",
+      "gemini": ""
+    },
+    "checkArgs": {
+      "opencode": [
+        "--version"
+      ],
+      "gemini": [
+        "--version"
+      ]
+    }
+  },
   "dangerousCommandDenylist": [
     "sudo",
     "su",

@@ -1301,6 +1301,12 @@ input {
   user-select: none;
 }
 
+.termMobileKeyBtnKeyboard {
+  flex: 0 0 44px;
+  font-size: 16px;
+  padding: 6px 8px;
+}
+
 .termMobileKeyBtn:active {
   background: rgba(14, 99, 156, 0.18);
   border-color: rgba(14, 99, 156, 0.6);

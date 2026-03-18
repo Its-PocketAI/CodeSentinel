@@ -38,6 +38,7 @@ const EN: Record<string, string> = {
   "验证码错误，请重试": "Captcha incorrect. Try again",
   "验证码已过期，请重试": "Captcha expired. Try again",
   "无效的 JSON": "Invalid JSON",
+  "打开键盘": "Open keyboard",
 
   "配置与安装": "Setup & Install",
   "选择根目录": "Select root folders",

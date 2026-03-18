@@ -18,7 +18,7 @@ type Pty = {
   };
 };
 
-type OpencodePtySession = {
+type GeminiPtySession = {
   id: string;
   cwd: string;
   cols: number;
@@ -88,14 +88,14 @@ function findInNvm(home: string | undefined | null, exeNames: string[]): string 
   return null;
 }
 
-async function resolveOpencodeBin(runAs?: RunAsUser | null, overrideBin?: string): Promise<string> {
-  const explicit = overrideBin || process.env.OPENCODE_BIN;
+async function resolveGeminiBin(runAs?: RunAsUser | null, overrideBin?: string): Promise<string> {
+  const explicit = overrideBin || process.env.GEMINI_BIN;
   if (explicit && fileExists(explicit)) return explicit;
 
   const exeNames =
     process.platform === "win32"
-      ? ["opencode.exe", "opencode.cmd", "opencode.bat", "opencode"]
-      : ["opencode"];
+      ? ["gemini.exe", "gemini.cmd", "gemini.bat", "gemini"]
+      : ["gemini"];
 
   const homeDirs = Array.from(
     new Set([process.env.HOME, process.env.USERPROFILE, runAs?.home].filter(Boolean) as string[]),
@@ -103,8 +103,8 @@ async function resolveOpencodeBin(runAs?: RunAsUser | null, overrideBin?: string
   const extraDirs = homeDirs.flatMap(buildHomeCandidates);
   const extraPath = [...extraDirs, process.env.PATH ?? ""].filter(Boolean).join(path.delimiter);
 
-  const opencode = await which("opencode", extraPath);
-  if (opencode) return opencode;
+  const gemini = await which("gemini", extraPath);
+  if (gemini) return gemini;
 
   const direct = findInDirs(extraDirs, exeNames);
   if (direct) return direct;
@@ -114,7 +114,7 @@ async function resolveOpencodeBin(runAs?: RunAsUser | null, overrideBin?: string
     if (nvm) return nvm;
   }
 
-  throw new Error('Cannot find "opencode". Install OpenCode (https://opencode.ai/docs/) or set OPENCODE_BIN=/absolute/path/to/opencode.');
+  throw new Error('Cannot find "gemini". Install Gemini CLI or set GEMINI_BIN=/absolute/path/to/gemini.');
 }
 
 async function loadPty(): Promise<Pty> {
@@ -140,8 +140,8 @@ async function loadPty(): Promise<Pty> {
   throw new Error("Failed to load node-pty module");
 }
 
-export class OpencodeCliManager {
-  private sessions = new Map<string, OpencodePtySession>();
+export class GeminiCliManager {
+  private sessions = new Map<string, GeminiPtySession>();
 
   constructor(
     private opts: {
@@ -160,24 +160,23 @@ export class OpencodeCliManager {
   async open(cwd: string, cols = 120, rows = 30, runAs?: RunAsUser | null) {
     if (this.sessions.size >= this.opts.maxSessions) throw new Error("Too many sessions");
     const realCwd = await this.opts.validateCwd(cwd);
-    const sessionId = `opencode_${randomId()}`;
+    const sessionId = `gemini_${randomId()}`;
 
     const pty = await loadPty();
-    const opencodeBin = await resolveOpencodeBin(runAs ?? null, this.opts.binOverride);
+    const geminiBin = await resolveGeminiBin(runAs ?? null, this.opts.binOverride);
 
-    const opencodeReal = (() => {
+    const geminiReal = (() => {
       try {
-        return fs.realpathSync(opencodeBin);
+        return fs.realpathSync(geminiBin);
       } catch {
-        return opencodeBin;
+        return geminiBin;
       }
     })();
 
-    const cmd = opencodeReal.endsWith(".js") || opencodeReal.endsWith(".cjs") || opencodeReal.endsWith(".mjs") ? process.execPath : opencodeBin;
-    // OpenCode supports: opencode [project]. We also set cwd to the same path for consistency.
-    const args = cmd === process.execPath ? [opencodeReal, realCwd] : [realCwd];
+    const cmd = geminiReal.endsWith(".js") || geminiReal.endsWith(".cjs") || geminiReal.endsWith(".mjs") ? process.execPath : geminiBin;
+    const args = cmd === process.execPath ? [geminiReal] : [];
 
-    const spawnPath = [path.dirname(opencodeBin), path.dirname(process.execPath), process.env.PATH ?? ""].filter(Boolean).join(path.delimiter);
+    const spawnPath = [path.dirname(geminiBin), path.dirname(process.execPath), process.env.PATH ?? ""].filter(Boolean).join(path.delimiter);
 
     const term = pty.spawn(cmd, args, {
       name: "xterm-256color",
@@ -195,15 +194,15 @@ export class OpencodeCliManager {
     });
 
     const stdoutPath = initSessionRecording(sessionId);
-    writeSessionMeta(sessionId, { cwd: realCwd, mode: "opencode" });
+    writeSessionMeta(sessionId, { cwd: realCwd, mode: "gemini" });
     await snapshotManager.create(sessionId, cols, rows);
-    const s: OpencodePtySession = { id: sessionId, cwd: realCwd, cols, rows, pty: term, stdoutPath };
+    const s: GeminiPtySession = { id: sessionId, cwd: realCwd, cols, rows, pty: term, stdoutPath };
     this.sessions.set(sessionId, s);
 
     this.opts.send({
       t: "term.data",
       sessionId,
-      data: `[opencode] PTY 已启动，等待 opencode 输出…\r\n`,
+      data: `[gemini] PTY 已启动，等待 gemini 输出…\r\n`,
     });
 
     term.onData((chunk: string) => {

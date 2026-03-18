@@ -3577,11 +3577,22 @@ export function App() {
                   <div className="termMobileKeysRow">
                     <button
                       type="button"
+                      className="termMobileKeyBtn termMobileKeyBtnKeyboard"
+                      title={t("打开键盘")}
+                      aria-label={t("打开键盘")}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        termRef.current?.focus();
+                      }}
+                    >
+                      ⌨️
+                    </button>
+                    <button
+                      type="button"
                       className="termMobileKeyBtn"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[A");
-                        termRef.current?.focus();
                       }}
                     >
                       Up
@@ -3592,7 +3603,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[B");
-                        termRef.current?.focus();
                       }}
                     >
                       Down
@@ -3603,7 +3613,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[D");
-                        termRef.current?.focus();
                       }}
                     >
                       Left
@@ -3614,7 +3623,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[C");
-                        termRef.current?.focus();
                       }}
                     >
                       Right
@@ -3625,7 +3633,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\r");
-                        termRef.current?.focus();
                       }}
                     >
                       Enter
@@ -3638,7 +3645,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u0003");
-                        termRef.current?.focus();
                       }}
                     >
                       Ctrl+C
@@ -3649,7 +3655,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u001a");
-                        termRef.current?.focus();
                       }}
                     >
                       Ctrl+Z
@@ -3660,7 +3665,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u001b");
-                        termRef.current?.focus();
                       }}
                     >
                       Esc
@@ -3671,7 +3675,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\t");
-                        termRef.current?.focus();
                       }}
                     >
                       Tab
@@ -3682,7 +3685,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\r");
-                        termRef.current?.focus();
                       }}
                     >
                       Shift+Enter
@@ -3972,11 +3974,22 @@ export function App() {
                   <div className="termMobileKeysRow">
                     <button
                       type="button"
+                      className="termMobileKeyBtn termMobileKeyBtnKeyboard"
+                      title={t("打开键盘")}
+                      aria-label={t("打开键盘")}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        termRef.current?.focus();
+                      }}
+                    >
+                      ⌨️
+                    </button>
+                    <button
+                      type="button"
                       className="termMobileKeyBtn"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[A");
-                        termRef.current?.focus();
                       }}
                     >
                       Up
@@ -3987,7 +4000,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[B");
-                        termRef.current?.focus();
                       }}
                     >
                       Down
@@ -3998,7 +4010,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[D");
-                        termRef.current?.focus();
                       }}
                     >
                       Left
@@ -4009,7 +4020,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[C");
-                        termRef.current?.focus();
                       }}
                     >
                       Right
@@ -4020,7 +4030,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\r");
-                        termRef.current?.focus();
                       }}
                     >
                       Enter
@@ -4033,7 +4042,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u0003");
-                        termRef.current?.focus();
                       }}
                     >
                       Ctrl+C
@@ -4044,7 +4052,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u001a");
-                        termRef.current?.focus();
                       }}
                     >
                       Ctrl+Z
@@ -4055,7 +4062,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u001b");
-                        termRef.current?.focus();
                       }}
                     >
                       Esc
@@ -4066,7 +4072,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\t");
-                        termRef.current?.focus();
                       }}
                     >
                       Tab
@@ -4077,7 +4082,6 @@ export function App() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\r");
-                        termRef.current?.focus();
                       }}
                     >
                       Shift+Enter

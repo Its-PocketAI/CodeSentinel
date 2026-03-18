@@ -65,6 +65,13 @@ Logs:
 
 ---
 
+## Mobile Usage
+
+- The on-screen terminal keys (Up/Down/Left/Right/Enter) do not auto-open the OS keyboard.
+- Tap the ⌨️ button to open the keyboard when you need to type.
+
+---
+
 ## Production (Recommended)
 
 One-click:
