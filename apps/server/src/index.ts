@@ -1157,6 +1157,24 @@ async function main() {
         setupDone = true;
       }
 
+      let dbReady = false;
+      let dbError: string | null = null;
+      try {
+        const dataDir = getDataDir();
+        const dbPath = path.join(dataDir, "chat_history.db");
+        const stat = fs.statSync(dbPath);
+        if (stat.isFile() && stat.size > 0) {
+          try {
+            const db = await getDbModule();
+            db.getDb();
+            dbReady = true;
+          } catch (e) {
+            dbReady = false;
+            dbError = (e as Error)?.message ?? String(e);
+          }
+        }
+      } catch {}
+
       res.json({
         ok: true,
         platform: process.platform,
@@ -1164,6 +1182,8 @@ async function main() {
         roots,
         defaultRoot,
         setupDone,
+        dbReady,
+        dbError,
         tools,
         cursorAppPaths,
         installHints: {

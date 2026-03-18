@@ -11,6 +11,8 @@ type SetupCheck = {
   platform?: string;
   roots?: string[];
   defaultRoot?: string;
+  dbReady?: boolean;
+  dbError?: string | null;
   tools?: { agent: ToolStatus; codex: ToolStatus; claude: ToolStatus; opencode: ToolStatus; gemini: ToolStatus; kimi: ToolStatus; qwen: ToolStatus; cursor: ToolStatus; rg: ToolStatus };
   installHints?: { agent: InstallHintsByPlatform; rg: InstallHintsByPlatform; codex: InstallHintsByPlatform; claude: InstallHintsByPlatform; opencode: InstallHintsByPlatform; gemini: InstallHintsByPlatform; kimi: InstallHintsByPlatform; qwen: InstallHintsByPlatform };
 };
@@ -66,6 +68,12 @@ export function SetupPage() {
       setRootsInput(setupData.defaultRoot);
     }
   }, [setupData, rootsInput]);
+
+  useEffect(() => {
+    if (setupData?.dbReady) {
+      setDbInitDone(true);
+    }
+  }, [setupData?.dbReady]);
 
   const roots = setupData?.roots ?? [];
   const step1Done = roots.length > 0;
@@ -127,6 +135,7 @@ export function SetupPage() {
       const data = await r.json();
       if (data?.ok) {
         setDbInitDone(true);
+        setSetupData((prev) => (prev ? { ...prev, dbReady: true } : prev));
       } else {
         setInstallResult({ tool: "db", ok: false, msg: data?.error ?? t("初始化失败") });
       }
