@@ -714,6 +714,51 @@ input {
   padding: 10px;
 }
 
+.settingsFold {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.settingsFoldHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: none;
+  background: var(--panel2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.settingsFoldHeader:hover {
+  background: var(--panel);
+}
+
+.settingsFoldIcon {
+  width: 14px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.settingsFoldTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settingsFoldBody {
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .windowsPanel {
   display: flex;
   flex-direction: column;

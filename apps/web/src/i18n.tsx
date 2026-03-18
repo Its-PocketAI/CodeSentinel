@@ -8,6 +8,8 @@ const EN: Record<string, string> = {
   "语言": "Language",
   "中文": "Chinese",
   "英文": "English",
+  "展开": "Expand",
+  "折叠": "Collapse",
 
   "正在连接服务…": "Connecting to service…",
   "等待后端就绪": "Waiting for backend readiness",

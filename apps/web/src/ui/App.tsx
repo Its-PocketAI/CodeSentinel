@@ -628,6 +628,12 @@ export function App() {
   const [commandDenylistText, setCommandDenylistText] = useState("");
   const [commandTimeoutSec, setCommandTimeoutSec] = useState("900");
   const [commandMaxOutputKB, setCommandMaxOutputKB] = useState("1024");
+  type SettingsSectionKey = "tools" | "language" | "security";
+  const [settingsOpen, setSettingsOpen] = useState<Record<SettingsSectionKey, boolean>>({
+    tools: true,
+    language: true,
+    security: true,
+  });
   const [termSessions, setTermSessions] = useState<
     Array<{ sessionId: string; updatedAt: number; sizeBytes: number; cwd?: string; mode?: string; active?: boolean }>
   >([]);
@@ -639,6 +645,7 @@ export function App() {
   const [replayLoading, setReplayLoading] = useState(false);
   const uiStateLoadedRef = useRef(false);
   const uiStateSaveTimerRef = useRef<number | null>(null);
+  const settingsTouchedRef = useRef(false);
   
   // Dark mode state
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -1374,6 +1381,15 @@ export function App() {
       mq.removeEventListener ? mq.removeEventListener("change", apply) : mq.removeListener(apply);
     };
   }, []);
+
+  useEffect(() => {
+    if (settingsTouchedRef.current) return;
+    if (isMobile) {
+      setSettingsOpen({ tools: true, language: false, security: false });
+    } else {
+      setSettingsOpen({ tools: true, language: true, security: true });
+    }
+  }, [isMobile]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -2851,124 +2867,177 @@ export function App() {
   const aiTools = settingsTools.filter((t) => t.id !== "command");
   const commandTools = settingsTools.filter((t) => t.id === "command");
   const commandDisabled = !commandSettings;
+  const toggleSettingsSection = useCallback((key: SettingsSectionKey) => {
+    settingsTouchedRef.current = true;
+    setSettingsOpen((prev) => {
+      const next = !prev[key];
+      if (!isMobile) return { ...prev, [key]: next };
+      if (!next) return { ...prev, [key]: false };
+      return { tools: false, language: false, security: false, [key]: true };
+    });
+  }, [isMobile]);
+
+  const SettingsSection = ({
+    id,
+    title,
+    hint,
+    children,
+  }: {
+    id: SettingsSectionKey;
+    title: string;
+    hint?: string;
+    children: React.ReactNode;
+  }) => {
+    const open = settingsOpen[id];
+    const bodyId = `settings-${id}`;
+    return (
+      <div className={"settingsFold" + (open ? " settingsFoldOpen" : "")}>
+        <button
+          type="button"
+          className="settingsFoldHeader"
+          onClick={() => toggleSettingsSection(id)}
+          aria-expanded={open}
+          aria-controls={bodyId}
+          title={open ? t("折叠") : t("展开")}
+        >
+          <span className="settingsFoldIcon" aria-hidden>{open ? "▾" : "▸"}</span>
+          <span className="settingsFoldTitle">{title}</span>
+        </button>
+        {open ? (
+          <div className="settingsFoldBody" id={bodyId}>
+            {hint ? <div className="settingsSectionHint">{hint}</div> : null}
+            {children}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   const SettingsPanel = (
     <div className="settingsPanel">
-      <div className="settingsSectionTitle">{t("工具设置")}</div>
-      <div className="settingsSectionHint">{t("启用或隐藏工具（设置会写入后端）")}</div>
-      <div className="settingsGroupTitle">{t("AI 工具")}</div>
-      <div className="settingsList">
-        {aiTools.map((tool) => {
-          const def = getToolDef(tool.id);
-          return (
-            <label className="settingsItem" key={tool.id}>
-              <input
-                type="checkbox"
-                checked={tool.enabled}
-                onChange={(e) => toggleToolEnabled(tool.id, e.target.checked)}
-              />
-              <span className="settingsItemLabel">{t(def.label)}</span>
-              <span className="settingsItemDesc">{t(def.desc)}</span>
-            </label>
-          );
-        })}
-      </div>
-      <div className="settingsGroupTitle">{t("命令行工具")}</div>
-      <div className="settingsList">
-        {commandTools.map((tool) => {
-          const def = getToolDef(tool.id);
-          return (
-            <label className="settingsItem" key={tool.id}>
-              <input
-                type="checkbox"
-                checked={tool.enabled}
-                onChange={(e) => toggleToolEnabled(tool.id, e.target.checked)}
-              />
-              <span className="settingsItemLabel">{t(def.label)}</span>
-              <span className="settingsItemDesc">{t(def.desc)}</span>
-            </label>
-          );
-        })}
-      </div>
-      <div className="settingsGroupTitle">{t("语言")}</div>
-      <div className="settingsGrid">
-        <label className="settingsField">
-          <span className="settingsFieldLabel">{t("语言")}</span>
-          <select className="select" value={lang} onChange={(e) => setLang(e.target.value as "zh" | "en")}>
-            <option value="zh">{t("中文")}</option>
-            <option value="en">{t("英文")}</option>
-          </select>
-        </label>
-      </div>
-      <div className="settingsGroupTitle">{t("命令行安全策略")}</div>
-      <div className="settingsSectionHint">{t("命令行窗口默认启用受限模式，仅允许安全命令。")}</div>
-      <div className="settingsGrid">
-        <label className="settingsField">
-          <span className="settingsFieldLabel">{t("模式")}</span>
-          <select
-            className="select"
-            value={commandMode}
-            disabled={commandDisabled}
-            onChange={(e) => setCommandMode(e.target.value as "denylist" | "allowlist")}
-          >
-            <option value="denylist">{t("禁止列表（默认）")}</option>
-            <option value="allowlist">{t("允许列表")}</option>
-          </select>
-        </label>
-        <label className="settingsField">
-          <span className="settingsFieldLabel">{t("超时（秒）")}</span>
-          <input
-            className="input"
-            type="number"
-            min={1}
-            value={commandTimeoutSec}
-            disabled={commandDisabled}
-            onChange={(e) => setCommandTimeoutSec(e.target.value)}
-          />
-        </label>
-        <label className="settingsField">
-          <span className="settingsFieldLabel">{t("最大输出（KB）")}</span>
-          <input
-            className="input"
-            type="number"
-            min={1}
-            value={commandMaxOutputKB}
-            disabled={commandDisabled}
-            onChange={(e) => setCommandMaxOutputKB(e.target.value)}
-          />
-        </label>
-      </div>
-      <div className="settingsField">
-        <span className="settingsFieldLabel">{t("允许列表（每行一个命令）")}</span>
-        <textarea
-          className="settingsTextarea"
-          rows={5}
-          placeholder={t("例如：ls\npwd\ngit\nnode")}
-          value={commandWhitelistText}
-          disabled={commandDisabled}
-          onChange={(e) => setCommandWhitelistText(e.target.value)}
-        />
-      </div>
-      <div className="settingsField">
-        <span className="settingsFieldLabel">{t("禁止列表（每行一个命令）")}</span>
-        <textarea
-          className="settingsTextarea"
-          rows={4}
-          placeholder={t("例如：rm\nsudo\nshutdown")}
-          value={commandDenylistText}
-          disabled={commandDisabled}
-          onChange={(e) => setCommandDenylistText(e.target.value)}
-        />
-      </div>
-      <div className="settingsFooter">
-        <span className="settingsHintText">{t("至少保留一个工具。")}</span>
-        <div className="settingsFooterRight">
-          {toolsSaving ? <span className="settingsHintText">{t("工具保存中…")}</span> : null}
-          <button className="btn" onClick={handleSaveCommandSettings} disabled={!commandDirty || commandSaving}>
-            {commandSaving ? t("保存中…") : t("保存命令行设置")}
-          </button>
+      <SettingsSection id="tools" title={t("工具设置")} hint={t("启用或隐藏工具（设置会写入后端）")}>
+        <div className="settingsGroupTitle">{t("AI 工具")}</div>
+        <div className="settingsList">
+          {aiTools.map((tool) => {
+            const def = getToolDef(tool.id);
+            return (
+              <label className="settingsItem" key={tool.id}>
+                <input
+                  type="checkbox"
+                  checked={tool.enabled}
+                  onChange={(e) => toggleToolEnabled(tool.id, e.target.checked)}
+                />
+                <span className="settingsItemLabel">{t(def.label)}</span>
+                <span className="settingsItemDesc">{t(def.desc)}</span>
+              </label>
+            );
+          })}
         </div>
-      </div>
+        <div className="settingsGroupTitle">{t("命令行工具")}</div>
+        <div className="settingsList">
+          {commandTools.map((tool) => {
+            const def = getToolDef(tool.id);
+            return (
+              <label className="settingsItem" key={tool.id}>
+                <input
+                  type="checkbox"
+                  checked={tool.enabled}
+                  onChange={(e) => toggleToolEnabled(tool.id, e.target.checked)}
+                />
+                <span className="settingsItemLabel">{t(def.label)}</span>
+                <span className="settingsItemDesc">{t(def.desc)}</span>
+              </label>
+            );
+          })}
+        </div>
+        <div className="settingsFooter">
+          <span className="settingsHintText">{t("至少保留一个工具。")}</span>
+          <div className="settingsFooterRight">
+            {toolsSaving ? <span className="settingsHintText">{t("工具保存中…")}</span> : null}
+          </div>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection id="language" title={t("语言")}>
+        <div className="settingsGrid">
+          <label className="settingsField">
+            <span className="settingsFieldLabel">{t("语言")}</span>
+            <select className="select" value={lang} onChange={(e) => setLang(e.target.value as "zh" | "en")}>
+              <option value="zh">{t("中文")}</option>
+              <option value="en">{t("英文")}</option>
+            </select>
+          </label>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection id="security" title={t("命令行安全策略")} hint={t("命令行窗口默认启用受限模式，仅允许安全命令。")}>
+        <div className="settingsGrid">
+          <label className="settingsField">
+            <span className="settingsFieldLabel">{t("模式")}</span>
+            <select
+              className="select"
+              value={commandMode}
+              disabled={commandDisabled}
+              onChange={(e) => setCommandMode(e.target.value as "denylist" | "allowlist")}
+            >
+              <option value="denylist">{t("禁止列表（默认）")}</option>
+              <option value="allowlist">{t("允许列表")}</option>
+            </select>
+          </label>
+          <label className="settingsField">
+            <span className="settingsFieldLabel">{t("超时（秒）")}</span>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              value={commandTimeoutSec}
+              disabled={commandDisabled}
+              onChange={(e) => setCommandTimeoutSec(e.target.value)}
+            />
+          </label>
+          <label className="settingsField">
+            <span className="settingsFieldLabel">{t("最大输出（KB）")}</span>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              value={commandMaxOutputKB}
+              disabled={commandDisabled}
+              onChange={(e) => setCommandMaxOutputKB(e.target.value)}
+            />
+          </label>
+        </div>
+        <div className="settingsField">
+          <span className="settingsFieldLabel">{t("允许列表（每行一个命令）")}</span>
+          <textarea
+            className="settingsTextarea"
+            rows={5}
+            placeholder={t("例如：ls\npwd\ngit\nnode")}
+            value={commandWhitelistText}
+            disabled={commandDisabled}
+            onChange={(e) => setCommandWhitelistText(e.target.value)}
+          />
+        </div>
+        <div className="settingsField">
+          <span className="settingsFieldLabel">{t("禁止列表（每行一个命令）")}</span>
+          <textarea
+            className="settingsTextarea"
+            rows={4}
+            placeholder={t("例如：rm\nsudo\nshutdown")}
+            value={commandDenylistText}
+            disabled={commandDisabled}
+            onChange={(e) => setCommandDenylistText(e.target.value)}
+          />
+        </div>
+        <div className="settingsFooter">
+          <span className="settingsHintText">{t("至少保留一个工具。")}</span>
+          <div className="settingsFooterRight">
+            <button className="btn" onClick={handleSaveCommandSettings} disabled={!commandDirty || commandSaving}>
+              {commandSaving ? t("保存中…") : t("保存命令行设置")}
+            </button>
+          </div>
+        </div>
+      </SettingsSection>
     </div>
   );
 
