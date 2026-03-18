@@ -43,22 +43,76 @@ function fileExists(p: string) {
   }
 }
 
-async function which(binName: string): Promise<string | null> {
+async function which(binName: string, envPATH?: string): Promise<string | null> {
   try {
+    const env = envPATH != null ? { ...process.env, PATH: envPATH } : process.env;
     const cmd = process.platform === "win32" ? "where.exe" : "which";
-    const r = await execa(cmd, [binName]);
+    const r = await execa(cmd, [binName], { env, timeout: 3000 });
     const p = r.stdout.trim().split("\n")[0];
     if (p && fileExists(p)) return p;
   } catch {}
   return null;
 }
 
-async function resolveOpencodeBin(): Promise<string> {
+function buildHomeCandidates(home: string | undefined | null) {
+  if (!home) return [];
+  return [
+    path.join(home, ".local", "bin"),
+    path.join(home, ".npm-global", "bin"),
+    path.join(home, ".local", "share", "pnpm"),
+  ];
+}
+
+function findInDirs(dirs: string[], exeNames: string[]): string | null {
+  for (const dir of dirs) {
+    for (const exe of exeNames) {
+      const full = path.join(dir, exe);
+      if (fileExists(full)) return full;
+    }
+  }
+  return null;
+}
+
+function findInNvm(home: string | undefined | null, exeNames: string[]): string | null {
+  if (!home) return null;
+  const base = path.join(home, ".nvm", "versions", "node");
+  try {
+    const entries = fs.readdirSync(base);
+    for (const entry of entries) {
+      for (const exe of exeNames) {
+        const full = path.join(base, entry, "bin", exe);
+        if (fileExists(full)) return full;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+async function resolveOpencodeBin(runAs?: RunAsUser | null): Promise<string> {
   const override = process.env.OPENCODE_BIN;
   if (override && fileExists(override)) return override;
 
-  const opencode = await which("opencode");
+  const exeNames =
+    process.platform === "win32"
+      ? ["opencode.exe", "opencode.cmd", "opencode.bat", "opencode"]
+      : ["opencode"];
+
+  const homeDirs = Array.from(
+    new Set([process.env.HOME, process.env.USERPROFILE, runAs?.home].filter(Boolean) as string[]),
+  );
+  const extraDirs = homeDirs.flatMap(buildHomeCandidates);
+  const extraPath = [...extraDirs, process.env.PATH ?? ""].filter(Boolean).join(path.delimiter);
+
+  const opencode = await which("opencode", extraPath);
   if (opencode) return opencode;
+
+  const direct = findInDirs(extraDirs, exeNames);
+  if (direct) return direct;
+
+  for (const home of homeDirs) {
+    const nvm = findInNvm(home, exeNames);
+    if (nvm) return nvm;
+  }
 
   throw new Error('Cannot find "opencode". Install OpenCode (https://opencode.ai/docs/) or set OPENCODE_BIN=/absolute/path/to/opencode.');
 }
@@ -108,7 +162,7 @@ export class OpencodeCliManager {
     const sessionId = `opencode_${randomId()}`;
 
     const pty = await loadPty();
-    const opencodeBin = await resolveOpencodeBin();
+    const opencodeBin = await resolveOpencodeBin(runAs ?? null);
 
     const opencodeReal = (() => {
       try {

@@ -198,6 +198,7 @@ It proxies `/api` and `/ws/term` to the backend and serves the built frontend.
 - 500 with backend up: check `logs/server.log` or `logs/prod.log`
 - Ports 3989/3990 in use: run `pnpm dev:fresh`
 - CLI not found: check PATH, use `where.exe` on Windows
+- OpenCode found locally but not in server: set `OPENCODE_BIN=/absolute/path/to/opencode` or ensure the service user’s PATH includes the bin dir
 
 ---
 

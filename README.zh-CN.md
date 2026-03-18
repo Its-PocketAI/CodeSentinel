@@ -198,6 +198,7 @@ Nginx 示例配置见 [nginx/codesentinel.conf](./nginx/codesentinel.conf)。
 - 500 但后端已启动：查看 `logs/server.log` 或 `logs/prod.log`
 - 3989/3990 被占用：运行 `pnpm dev:fresh`
 - CLI 找不到：检查 PATH，Windows 使用 `where.exe`
+- 本地能用但服务端找不到 OpenCode：设置 `OPENCODE_BIN=/absolute/path/to/opencode`，或把该路径加入服务运行用户的 PATH
 
 ---
 

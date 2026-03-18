@@ -171,12 +171,22 @@ async function checkCmdVersion(bin: string, args: string[] = ["--version"]) {
   }
   if (!p) return { ok: false as const, path: null as string | null, version: null as string | null, error: "not found" };
   try {
+    const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+    const extraBins =
+      homeDir.length > 0
+        ? [
+            path.join(homeDir, ".local", "bin"),
+            path.join(homeDir, ".npm-global", "bin"),
+            path.join(homeDir, ".local", "share", "pnpm"),
+          ]
+        : [];
+    const unixPath = [...extraBins, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
     const pathEnv =
       process.platform === "win32" && bin === "agent"
         ? [...getAgentCandidatePathsWin(), process.env.PATH || ""].join(path.delimiter)
-        : process.platform === "win32" && bin === "rg"
+      : process.platform === "win32" && bin === "rg"
           ? [...getRgCandidatePathsWin(), process.env.PATH || ""].join(path.delimiter)
-          : `${process.env.HOME || ""}/.local/bin:${process.env.PATH || ""}`;
+          : unixPath;
     const r = await execa(p, args, {
       timeout: 5000,
       env: { ...process.env, PATH: pathEnv },
