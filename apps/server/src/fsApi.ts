@@ -25,6 +25,16 @@ export async function listDir(roots: string[], dirPath: string): Promise<{ path:
   return { path: realDir, entries };
 }
 
+export async function statPath(
+  roots: string[],
+  filePath: string,
+): Promise<{ path: string; type: FsEntry["type"]; size: number; mtimeMs: number }> {
+  const real = await validatePathInRoots(filePath, roots);
+  const st = await fs.stat(real);
+  const type = st.isDirectory() ? "dir" : st.isFile() ? "file" : "other";
+  return { path: real, type, size: st.size, mtimeMs: st.mtimeMs };
+}
+
 export async function readTextFile(
   roots: string[],
   filePath: string,

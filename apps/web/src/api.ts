@@ -337,9 +337,20 @@ export async function apiList(path: string) {
   );
 }
 
-export async function apiRead(path: string) {
+export async function apiStat(path: string) {
+  return j<{ ok: true; path: string; type: "file" | "dir" | "other"; size: number; mtimeMs: number }>(
+    await authedFetch(`/api/stat?path=${encodeURIComponent(path)}`),
+  );
+}
+
+export async function apiRead(path: string, opts?: { maxBytes?: number }) {
+  const params = new URLSearchParams();
+  params.set("path", path);
+  if (opts?.maxBytes && Number.isFinite(opts.maxBytes)) {
+    params.set("maxBytes", String(opts.maxBytes));
+  }
   return j<{ ok: true; path: string; text: string; size: number; mtimeMs: number }>(
-    await authedFetch(`/api/read?path=${encodeURIComponent(path)}`),
+    await authedFetch(`/api/read?${params.toString()}`),
   );
 }
 

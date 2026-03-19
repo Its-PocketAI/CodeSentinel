@@ -124,6 +124,10 @@ const EN: Record<string, string> = {
   "[错误] 根目录: {msg}": "[Error] Roots: {msg}",
   "[错误] 列表: {msg}": "[Error] List: {msg}",
   "[错误] 读取: {msg}": "[Error] Read: {msg}",
+  "[错误] 文件过大：{name} {size} > {limit}": "[Error] File too large: {name} {size} > {limit}",
+  "文件“{name}”大小为 {size}，超过 {threshold}。是否继续打开？":
+    "File “{name}” is {size}, exceeding {threshold}. Open anyway?",
+  "[提示] 已取消打开 {name}": "[Hint] Open cancelled: {name}",
   "[成功] 已保存 {name}": "[Success] Saved {name}",
   "[错误] 写入: {msg}": "[Error] Write: {msg}",
   "[错误] 刷新: {msg}": "[Error] Refresh: {msg}",

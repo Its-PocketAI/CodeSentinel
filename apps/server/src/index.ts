@@ -13,7 +13,7 @@ import Busboy from "busboy";
 
 import { loadConfig, rootsOverridePath, readRootsOverride } from "./config.js";
 import { normalizeRoots, validatePathInRoots } from "./pathGuard.js";
-import { listDir, readTextFile, writeTextFile, createDir } from "./fsApi.js";
+import { listDir, readTextFile, writeTextFile, createDir, statPath } from "./fsApi.js";
 import { attachTermWs, listActiveTermSessions } from "./term/wsTerm.js";
 import { getDataDir } from "./paths.js";
 import { snapshotManager } from "./term/snapshotManager.js";
@@ -1586,10 +1586,25 @@ async function main() {
     }
   });
 
+  app.get("/api/stat", async (req, res) => {
+    try {
+      const p = String(req.query.path ?? "");
+      const r = await statPath(roots, p);
+      res.json({ ok: true, ...r });
+    } catch (e: any) {
+      res.status(400).json({ ok: false, error: e?.message ?? String(e) });
+    }
+  });
+
   app.get("/api/read", async (req, res) => {
     try {
       const p = String(req.query.path ?? "");
-      const r = await readTextFile(roots, p, 2 * 1024 * 1024);
+      const maxRaw = String(req.query.maxBytes ?? "");
+      const maxReq = Number(maxRaw);
+      const hardLimit = 50 * 1024 * 1024;
+      const defaultLimit = 2 * 1024 * 1024;
+      const maxBytes = Number.isFinite(maxReq) && maxReq > 0 ? Math.min(maxReq, hardLimit) : defaultLimit;
+      const r = await readTextFile(roots, p, maxBytes);
       res.json({ ok: true, ...r });
     } catch (e: any) {
       res.status(400).json({ ok: false, error: e?.message ?? String(e) });

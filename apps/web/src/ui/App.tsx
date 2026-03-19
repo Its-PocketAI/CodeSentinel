@@ -30,6 +30,7 @@ import {
   apiGetUiState,
   apiSetUiState,
   apiFetch,
+  apiStat,
   apiAuthLogout,
   clearAuthToken,
   getAuthToken,
@@ -46,6 +47,8 @@ type TreeNode = {
   path: string;
   name: string;
   type: "dir" | "file" | "other";
+  size?: number;
+  mtimeMs?: number;
   expanded?: boolean;
   loading?: boolean;
   loaded?: boolean;
@@ -68,6 +71,8 @@ const TOOL_DEFS: { id: ToolId; label: string; desc: string }[] = [
 ];
 
 const DEFAULT_TOOL_SETTINGS: UiToolSetting[] = TOOL_DEFS.map((t) => ({ id: t.id, enabled: true }));
+const LARGE_FILE_THRESHOLD_BYTES = 10 * 1024 * 1024;
+const LARGE_FILE_HARD_LIMIT_BYTES = 50 * 1024 * 1024;
 
 function isToolId(id: string): id is ToolId {
   return TOOL_DEFS.some((t) => t.id === id);
@@ -1725,6 +1730,49 @@ export function App() {
     [isMobile],
   );
 
+  const ensureLargeFileAllowed = useCallback(
+    async (path: string, size?: number) => {
+      let actualSize = typeof size === "number" && Number.isFinite(size) ? size : null;
+      if (actualSize === null) {
+        try {
+          const st = await apiStat(path);
+          if (typeof st.size === "number" && Number.isFinite(st.size)) {
+            actualSize = st.size;
+          }
+        } catch {}
+      }
+
+      if (actualSize !== null && actualSize > LARGE_FILE_HARD_LIMIT_BYTES) {
+        setStatus(
+          t("[错误] 文件过大：{name} {size} > {limit}", {
+            name: baseName(path),
+            size: bytes(actualSize),
+            limit: bytes(LARGE_FILE_HARD_LIMIT_BYTES),
+          }),
+        );
+        return { ok: false, force: false };
+      }
+
+      if (actualSize !== null && actualSize > LARGE_FILE_THRESHOLD_BYTES) {
+        const ok = window.confirm(
+          t("文件“{name}”大小为 {size}，超过 {threshold}。是否继续打开？", {
+            name: baseName(path),
+            size: bytes(actualSize),
+            threshold: bytes(LARGE_FILE_THRESHOLD_BYTES),
+          }),
+        );
+        if (!ok) {
+          setStatus(t("[提示] 已取消打开 {name}", { name: baseName(path) }));
+          return { ok: false, force: false };
+        }
+        return { ok: true, force: true };
+      }
+
+      return { ok: true, force: false };
+    },
+    [t],
+  );
+
   const initializedCwdRef = useRef(false);
 
   useEffect(() => {
@@ -1813,6 +1861,8 @@ export function App() {
           path: joinPath(r.path, e.name),
           name: e.name,
           type: e.type,
+          size: e.size,
+          mtimeMs: e.mtimeMs,
         }));
         setTree((t) => (t ? { ...t, loading: false, loaded: true, children } : t));
       } catch (e: any) {
@@ -1885,6 +1935,8 @@ export function App() {
                 path: joinPath(r.path, e.name),
                 name: e.name,
                 type: e.type,
+                size: e.size,
+                mtimeMs: e.mtimeMs,
               }));
               setTree((prev) =>
                 prev
@@ -1939,7 +1991,9 @@ export function App() {
     let cancelled = false;
     const restoreFromPath = async (path: string) => {
       if (!path.startsWith(activeRoot)) return;
-      const r = await apiRead(path);
+      const guard = await ensureLargeFileAllowed(path);
+      if (!guard.ok) return;
+      const r = await apiRead(path, guard.force ? { maxBytes: LARGE_FILE_HARD_LIMIT_BYTES } : undefined);
       if (cancelled) return;
       setOpenTabs((prev) => (prev.includes(r.path) ? prev : [r.path]));
       setActiveFile(r.path);
@@ -1992,6 +2046,8 @@ export function App() {
         path: joinPath(r.path, e.name),
         name: e.name,
         type: e.type,
+        size: e.size,
+        mtimeMs: e.mtimeMs,
       }));
       setTree((prev) =>
         prev
@@ -2010,7 +2066,9 @@ export function App() {
     if (parentDir) setExplorerUserPath(parentDir);
     try {
       setStatus("");
-      const r = await apiRead(node.path);
+      const guard = await ensureLargeFileAllowed(node.path, node.size);
+      if (!guard.ok) return;
+      const r = await apiRead(node.path, guard.force ? { maxBytes: LARGE_FILE_HARD_LIMIT_BYTES } : undefined);
       setActiveFile(r.path);
       setEditorMode("edit");
       if (!isMobile) setPanelEditorCollapsed(false); // 点击文件时若编辑器折叠则展开
@@ -2080,6 +2138,8 @@ export function App() {
           path: joinPath(r.path, e.name),
           name: e.name,
           type: e.type,
+          size: e.size,
+          mtimeMs: e.mtimeMs,
         }));
         if (dirPath === activeRoot) {
           setTree((prev) =>
