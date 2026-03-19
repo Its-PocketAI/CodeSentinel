@@ -41,6 +41,7 @@ const EN: Record<string, string> = {
   "验证码已过期，请重试": "Captcha expired. Try again",
   "无效的 JSON": "Invalid JSON",
   "打开键盘": "Open keyboard",
+  "关闭键盘": "Close keyboard",
   "Gemini CLI": "Gemini CLI",
   "Kimi CLI": "Kimi CLI",
   "Qwen Code CLI": "Qwen Code CLI",

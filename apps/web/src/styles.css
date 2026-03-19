@@ -1526,6 +1526,12 @@ input {
   overflow: visible;
 }
 
+.termMobileKeyBtnActive {
+  border-color: rgba(56, 189, 248, 0.9);
+  background: rgba(14, 165, 233, 0.2);
+  color: #e0f2fe;
+}
+
 .termMobileKeyBtn[data-keyhint]::after {
   content: attr(data-keyhint);
   position: absolute;

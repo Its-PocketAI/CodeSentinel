@@ -1256,6 +1256,9 @@ export function App() {
   const [isImageUploading, setIsImageUploading] = useState(false);
   const [mobileKeysVisible, setMobileKeysVisible] = useState(false);
   const mobileKeysTouchedRef = useRef(false);
+  const [mobileKeyboardOpen, setMobileKeyboardOpen] = useState(false);
+  const mobileKeyboardGateRef = useRef(false);
+  const mobileKeyboardGateTimerRef = useRef<number | null>(null);
   const termMobileControlsRef = useRef<HTMLDivElement | null>(null);
   const mobileTermTouchStateRef = useRef<MobileTermTouchState | null>(null);
   const lastMobileControlsHRef = useRef<number>(-1);
@@ -1457,6 +1460,7 @@ export function App() {
   );
   const activeToolId = modeToToolId(termMode);
   const agentMobileQuickKeys = useMemo(() => AGENT_MOBILE_QUICK_KEYS[termMode] ?? [], [termMode]);
+  const mobileKeyboardLabel = mobileKeyboardOpen ? t("关闭键盘") : t("打开键盘");
   const activeShortcutDoc = useMemo(() => TOOL_SHORTCUT_DOCS[termMode] ?? null, [termMode]);
   const commandDirty = useMemo(() => {
     if (!commandSettings) return false;
@@ -1612,6 +1616,7 @@ export function App() {
       startScrollLeft: viewport.scrollLeft,
       moved: false,
     };
+    e.preventDefault();
     e.stopPropagation();
   }, [getTermViewport, isMobile]);
 
@@ -1642,6 +1647,54 @@ export function App() {
     }
     termRef.current?.blur();
   }, [isMobile]);
+
+  const getTermHelperTextarea = useCallback((): HTMLTextAreaElement | null => {
+    const root = termDivRef.current;
+    if (!root) return null;
+    return root.querySelector(".xterm-helper-textarea") as HTMLTextAreaElement | null;
+  }, []);
+
+  const closeMobileKeyboard = useCallback(() => {
+    mobileKeyboardGateRef.current = false;
+    if (mobileKeyboardGateTimerRef.current !== null) {
+      window.clearTimeout(mobileKeyboardGateTimerRef.current);
+      mobileKeyboardGateTimerRef.current = null;
+    }
+    const helper = getTermHelperTextarea();
+    helper?.blur();
+    termRef.current?.blur();
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) {
+      active.blur();
+    }
+    setMobileKeyboardOpen(false);
+  }, [getTermHelperTextarea]);
+
+  const openMobileKeyboard = useCallback(() => {
+    mobileKeyboardGateRef.current = true;
+    if (mobileKeyboardGateTimerRef.current !== null) {
+      window.clearTimeout(mobileKeyboardGateTimerRef.current);
+      mobileKeyboardGateTimerRef.current = null;
+    }
+    termRef.current?.focus();
+    mobileKeyboardGateTimerRef.current = window.setTimeout(() => {
+      mobileKeyboardGateRef.current = false;
+      mobileKeyboardGateTimerRef.current = null;
+      const helper = getTermHelperTextarea();
+      setMobileKeyboardOpen(Boolean(helper && document.activeElement === helper));
+    }, 450);
+  }, [getTermHelperTextarea]);
+
+  const toggleMobileKeyboard = useCallback(() => {
+    if (!isMobile) return;
+    const helper = getTermHelperTextarea();
+    const focused = Boolean(helper && document.activeElement === helper);
+    if (focused || mobileKeyboardOpen) {
+      closeMobileKeyboard();
+    } else {
+      openMobileKeyboard();
+    }
+  }, [closeMobileKeyboard, getTermHelperTextarea, isMobile, mobileKeyboardOpen, openMobileKeyboard]);
 
   const handleTermKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -1722,6 +1775,45 @@ export function App() {
     if (mobileKeysTouchedRef.current) return;
     setMobileKeysVisible(true);
   }, [isMobile, termMode]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileKeyboardOpen(false);
+      mobileKeyboardGateRef.current = false;
+      if (mobileKeyboardGateTimerRef.current !== null) {
+        window.clearTimeout(mobileKeyboardGateTimerRef.current);
+        mobileKeyboardGateTimerRef.current = null;
+      }
+      return;
+    }
+    const onFocusIn = (ev: FocusEvent) => {
+      const target = ev.target as HTMLElement | null;
+      if (!target || !target.classList.contains("xterm-helper-textarea")) return;
+      if (!mobileKeyboardGateRef.current) {
+        target.blur();
+        setMobileKeyboardOpen(false);
+        return;
+      }
+      setMobileKeyboardOpen(true);
+    };
+    const onFocusOut = (ev: FocusEvent) => {
+      const target = ev.target as HTMLElement | null;
+      if (!target || !target.classList.contains("xterm-helper-textarea")) return;
+      setMobileKeyboardOpen(false);
+    };
+    document.addEventListener("focusin", onFocusIn, true);
+    document.addEventListener("focusout", onFocusOut, true);
+    return () => {
+      document.removeEventListener("focusin", onFocusIn, true);
+      document.removeEventListener("focusout", onFocusOut, true);
+    };
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isMobile || !terminalVisible || termMode === "cursor") {
+      closeMobileKeyboard();
+    }
+  }, [closeMobileKeyboard, isMobile, terminalVisible, termMode]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -4271,13 +4363,14 @@ export function App() {
                   <div className="termMobileKeysRow">
                     <button
                       type="button"
-                      className="termMobileKeyBtn termMobileKeyBtnKeyboard"
-                      data-keyhint={t("打开键盘")}
-                      title={t("打开键盘")}
-                      aria-label={t("打开键盘")}
+                      className={"termMobileKeyBtn termMobileKeyBtnKeyboard" + (mobileKeyboardOpen ? " termMobileKeyBtnActive" : "")}
+                      data-keyhint={mobileKeyboardLabel}
+                      title={mobileKeyboardLabel}
+                      aria-label={mobileKeyboardLabel}
                       onPointerDown={(e) => {
                         e.preventDefault();
-                        termRef.current?.focus();
+                        e.stopPropagation();
+                        toggleMobileKeyboard();
                       }}
                     >
                       ⌨️
@@ -4786,13 +4879,14 @@ export function App() {
                   <div className="termMobileKeysRow">
                     <button
                       type="button"
-                      className="termMobileKeyBtn termMobileKeyBtnKeyboard"
-                      data-keyhint={t("打开键盘")}
-                      title={t("打开键盘")}
-                      aria-label={t("打开键盘")}
+                      className={"termMobileKeyBtn termMobileKeyBtnKeyboard" + (mobileKeyboardOpen ? " termMobileKeyBtnActive" : "")}
+                      data-keyhint={mobileKeyboardLabel}
+                      title={mobileKeyboardLabel}
+                      aria-label={mobileKeyboardLabel}
                       onPointerDown={(e) => {
                         e.preventDefault();
-                        termRef.current?.focus();
+                        e.stopPropagation();
+                        toggleMobileKeyboard();
                       }}
                     >
                       ⌨️
