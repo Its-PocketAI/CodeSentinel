@@ -42,6 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 - 校验端口占用：交互模式遇到占用会要求重填，非交互模式会快速报错退出
 - 终端打印并提醒你自行保存，同时写入 `config/config.json`
 - 默认启动生产服务（`./run/prod-start.sh`）
+- 安装脚本退出前会等待 `http://localhost:<port>/healthz` 返回 200（默认超时 60 秒）
 
 ### 指定目录 / 不自动启动
 
@@ -57,6 +58,7 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 - `CODESENTINEL_START`（`1` 自动启动，`0` 跳过）
 - `CODESENTINEL_INTERACTIVE`（`auto`/`1`/`0`，默认 `auto`）
 - `CODESENTINEL_PORT`、`CODESENTINEL_AUTH_USER`、`CODESENTINEL_AUTH_PASS`（非交互/CI 覆盖）
+- `CODESENTINEL_HEALTH_TIMEOUT_SEC`（启动后健康检查等待秒数，默认 `60`）
 
 说明：
 - `CODESENTINEL_INTERACTIVE=auto`：有 TTY 时自动交互，无 TTY（如 CI）自动走非交互。

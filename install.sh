@@ -14,6 +14,7 @@ set -euo pipefail
 #   CODESENTINEL_PORT   (default: read from config, fallback 3990)
 #   CODESENTINEL_AUTH_USER (default: read from config, fallback admin)
 #   CODESENTINEL_AUTH_PASS (default: read from config, fallback change_me)
+#   CODESENTINEL_HEALTH_TIMEOUT_SEC (default: 60; startup health wait timeout)
 
 REPO_URL="${CODESENTINEL_REPO:-https://github.com/Its-PocketAI/CodeSentinel.git}"
 BRANCH="${CODESENTINEL_BRANCH:-main}"
@@ -146,6 +147,44 @@ is_port_in_use() {
   node -e 'const net=require("net"); const p=Number(process.argv[1]); if(!Number.isFinite(p)||p<1||p>65535){process.exit(2)} const s=net.createServer(); s.once("error",()=>process.exit(0)); s.once("listening",()=>s.close(()=>process.exit(1))); s.listen(p,"0.0.0.0");' "$p" >/dev/null 2>&1
 }
 
+check_health_once() {
+  local p="$1"
+  node -e '
+const http = require("http");
+const port = Number(process.argv[1]);
+const req = http.request(
+  { hostname: "127.0.0.1", port, path: "/healthz", method: "GET", timeout: 1500 },
+  (res) => {
+    res.resume();
+    process.exit(res.statusCode === 200 ? 0 : 1);
+  }
+);
+req.on("error", () => process.exit(1));
+req.on("timeout", () => {
+  req.destroy();
+  process.exit(1);
+});
+req.end();
+' "$p" >/dev/null 2>&1
+}
+
+wait_for_health() {
+  local p="$1"
+  local timeout="${CODESENTINEL_HEALTH_TIMEOUT_SEC:-60}"
+  if [[ ! "$timeout" =~ ^[0-9]+$ ]] || (( timeout < 1 )); then
+    timeout=60
+  fi
+  local i
+  for ((i = 1; i <= timeout; i++)); do
+    if check_health_once "$p"; then
+      log "healthz is ready: http://localhost:${p}/healthz (wait ${i}s)"
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 if ! check_better_sqlite3; then
   log "native binding missing for better-sqlite3, attempting auto-rebuild..."
   if command -v npm >/dev/null 2>&1; then
@@ -264,6 +303,11 @@ log "please keep your username/password in a safe place"
 if [[ "$AUTO_START" == "1" ]]; then
   log "starting production service..."
   ./run/prod-start.sh
+  if ! wait_for_health "$SET_PORT"; then
+    log "service did not become healthy in time. recent logs:"
+    tail -n 60 "$INSTALL_DIR/logs/prod.log" || true
+    die "startup health check failed (timeout=${CODESENTINEL_HEALTH_TIMEOUT_SEC:-60}s)"
+  fi
 else
   log "auto-start skipped (CODESENTINEL_START=$AUTO_START)"
 fi

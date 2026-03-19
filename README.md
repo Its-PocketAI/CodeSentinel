@@ -42,6 +42,7 @@ What it does:
 - Validates the selected port; if occupied, interactive mode asks again and non-interactive mode fails fast with a clear message.
 - Prints these values and reminds you to save them; values are written to `config/config.json`.
 - Starts production service (`./run/prod-start.sh`) by default.
+- Waits for `http://localhost:<port>/healthz` to return 200 before installer exits (default timeout: 60s).
 
 ### Custom install directory / no auto-start
 
@@ -57,6 +58,7 @@ Available env vars:
 - `CODESENTINEL_START` (`1` auto-start, `0` skip start)
 - `CODESENTINEL_INTERACTIVE` (`auto`/`1`/`0`, default: `auto`)
 - `CODESENTINEL_PORT`, `CODESENTINEL_AUTH_USER`, `CODESENTINEL_AUTH_PASS` (for non-interactive/CI override)
+- `CODESENTINEL_HEALTH_TIMEOUT_SEC` (startup health wait timeout, default `60`)
 
 Notes:
 - `CODESENTINEL_INTERACTIVE=auto` prompts when a TTY is available; in CI/non-TTY it falls back to non-interactive mode.
