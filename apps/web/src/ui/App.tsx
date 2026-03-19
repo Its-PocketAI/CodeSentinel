@@ -578,7 +578,7 @@ function TreeView(props: {
               title={t("删除")}
               aria-label={t("删除")}
             >
-              Del
+              x
             </button>
           ) : null}
           {node.type === "dir" ? (
