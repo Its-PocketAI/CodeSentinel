@@ -25,13 +25,23 @@ export async function normalizeRoots(roots: string[]) {
 }
 
 export async function realpathSafe(p: string) {
-  // If path doesn't exist yet (e.g. write new file), resolve parent.
-  try {
-    return await fs.realpath(p);
-  } catch {
-    const parent = path.dirname(p);
-    const realParent = await fs.realpath(parent);
-    return path.join(realParent, path.basename(p));
+  // If the target (or its direct parent) doesn't exist yet, walk upward until an
+  // existing ancestor is found, then reconstruct the unresolved tail.
+  const abs = path.resolve(p);
+  const tail: string[] = [];
+  let probe = abs;
+  while (true) {
+    try {
+      const realBase = await fs.realpath(probe);
+      return tail.length ? path.join(realBase, ...tail.reverse()) : realBase;
+    } catch {
+      const parent = path.dirname(probe);
+      if (parent === probe) {
+        throw new Error(`Path does not exist: ${p}`);
+      }
+      tail.push(path.basename(probe));
+      probe = parent;
+    }
   }
 }
 

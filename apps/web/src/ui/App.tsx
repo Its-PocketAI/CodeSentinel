@@ -2498,7 +2498,7 @@ export function App() {
   }, []);
 
   const handleImageUploadClick = useCallback(() => {
-    const base = activeRoot || terminalCwd;
+    const base = terminalCwd || activeRoot;
     if (!base) {
       setStatus(t("[错误] 请先选择目录"));
       return;
@@ -2508,7 +2508,7 @@ export function App() {
     if (!input) return;
     input.value = "";
     input.click();
-  }, [activeRoot, terminalCwd, isImageUploading, t]);
+  }, [terminalCwd, activeRoot, isImageUploading, t]);
 
   const queueTermInsert = useCallback(
     (data: string) => {
@@ -2537,7 +2537,7 @@ export function App() {
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files ? e.target.files[0] : null;
       if (!file) return;
-      const baseRoot = activeRoot || terminalCwd;
+      const baseRoot = terminalCwd || activeRoot;
       if (!baseRoot) {
         setStatus(t("[错误] 请先选择目录"));
         return;
