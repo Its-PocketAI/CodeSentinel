@@ -36,6 +36,7 @@ What it does:
 - Checks Node.js and pnpm.
 - Clones/updates the repository to `~/CodeSentinel` by default.
 - Installs dependencies.
+- Verifies `better-sqlite3` native binding and auto-rebuilds when missing.
 - Bootstraps `config/config.json` from `config/config.example.json` (if missing).
 - Interactively asks and confirms login `username`, `password`, and `server port`.
 - Prints these values and reminds you to save them; values are written to `config/config.json`.

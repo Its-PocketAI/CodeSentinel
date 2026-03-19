@@ -100,6 +100,36 @@ cd "$INSTALL_DIR"
 log "installing dependencies..."
 pnpm install --frozen-lockfile || pnpm install
 
+check_better_sqlite3() {
+  node - <<'NODE'
+const { createRequire } = require("module");
+try {
+  const req = createRequire(process.cwd() + "/apps/server/package.json");
+  const BetterSqlite3 = req("better-sqlite3");
+  const db = new BetterSqlite3(":memory:");
+  db.prepare("select 1").get();
+  db.close();
+  process.exit(0);
+} catch {
+  process.exit(1);
+}
+NODE
+}
+
+if ! check_better_sqlite3; then
+  log "native binding missing for better-sqlite3, attempting auto-rebuild..."
+  if command -v npm >/dev/null 2>&1; then
+    (
+      cd "$INSTALL_DIR/apps/server"
+      npm rebuild better-sqlite3 --build-from-source
+    ) || die "failed to rebuild better-sqlite3"
+  else
+    die "npm is required to rebuild better-sqlite3 (not found)"
+  fi
+  check_better_sqlite3 || die "better-sqlite3 is still unavailable after rebuild"
+  log "better-sqlite3 binding is ready"
+fi
+
 mkdir -p config
 if [[ ! -f config/config.json ]] && [[ -f config/config.example.json ]]; then
   cp config/config.example.json config/config.json

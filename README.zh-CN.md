@@ -36,6 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 - 检查 Node.js / pnpm
 - 克隆或更新仓库到默认目录 `~/CodeSentinel`
 - 安装依赖
+- 检查 `better-sqlite3` 原生绑定，缺失时自动重建修复
 - 自动生成 `config/config.json`（若不存在）
 - 交互确认登录 `username`、`password` 与服务 `port`
 - 终端打印并提醒你自行保存，同时写入 `config/config.json`
