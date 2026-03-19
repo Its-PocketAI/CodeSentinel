@@ -57,6 +57,7 @@ type TreeNode = {
 
 type ToolId = "cursor" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor-cli" | "command";
 type TermMode = "restricted" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor" | "cursor-cli";
+type MobileTermQuickKey = { id: string; label: string; data: string };
 
 const TOOL_DEFS: { id: ToolId; label: string; desc: string }[] = [
   { id: "cursor", label: "Cursor Chat", desc: "对话式助手（非终端）" },
@@ -73,6 +74,43 @@ const TOOL_DEFS: { id: ToolId; label: string; desc: string }[] = [
 const DEFAULT_TOOL_SETTINGS: UiToolSetting[] = TOOL_DEFS.map((t) => ({ id: t.id, enabled: true }));
 const LARGE_FILE_THRESHOLD_BYTES = 10 * 1024 * 1024;
 const LARGE_FILE_HARD_LIMIT_BYTES = 50 * 1024 * 1024;
+const AGENT_MOBILE_QUICK_KEYS: Partial<Record<TermMode, MobileTermQuickKey[]>> = {
+  codex: [
+    { id: "ctrl-j", label: "Ctrl+J", data: "\n" },
+    { id: "ctrl-l", label: "Ctrl+L", data: "\u000c" },
+    { id: "ctrl-r", label: "Ctrl+R", data: "\u0012" },
+  ],
+  claude: [
+    { id: "shift-tab", label: "Shift+Tab", data: "\u001b[Z" },
+    { id: "ctrl-l", label: "Ctrl+L", data: "\u000c" },
+    { id: "ctrl-r", label: "Ctrl+R", data: "\u0012" },
+  ],
+  opencode: [
+    { id: "ctrl-j", label: "Ctrl+J", data: "\n" },
+    { id: "ctrl-k", label: "Ctrl+K", data: "\u000b" },
+    { id: "ctrl-l", label: "Ctrl+L", data: "\u000c" },
+  ],
+  gemini: [
+    { id: "ctrl-j", label: "Ctrl+J", data: "\n" },
+    { id: "ctrl-l", label: "Ctrl+L", data: "\u000c" },
+    { id: "ctrl-r", label: "Ctrl+R", data: "\u0012" },
+  ],
+  kimi: [
+    { id: "ctrl-j", label: "Ctrl+J", data: "\n" },
+    { id: "ctrl-l", label: "Ctrl+L", data: "\u000c" },
+    { id: "ctrl-r", label: "Ctrl+R", data: "\u0012" },
+  ],
+  qwen: [
+    { id: "ctrl-j", label: "Ctrl+J", data: "\n" },
+    { id: "ctrl-l", label: "Ctrl+L", data: "\u000c" },
+    { id: "ctrl-r", label: "Ctrl+R", data: "\u0012" },
+  ],
+  "cursor-cli": [
+    { id: "ctrl-j", label: "Ctrl+J", data: "\n" },
+    { id: "ctrl-l", label: "Ctrl+L", data: "\u000c" },
+    { id: "ctrl-r", label: "Ctrl+R", data: "\u0012" },
+  ],
+};
 
 function isToolId(id: string): id is ToolId {
   return TOOL_DEFS.some((t) => t.id === id);
@@ -1294,6 +1332,7 @@ export function App() {
     [toolSettings],
   );
   const activeToolId = modeToToolId(termMode);
+  const agentMobileQuickKeys = useMemo(() => AGENT_MOBILE_QUICK_KEYS[termMode] ?? [], [termMode]);
   const commandDirty = useMemo(() => {
     if (!commandSettings) return false;
     const toNum = (v: string, fallback: number) => {
@@ -4136,7 +4175,34 @@ export function App() {
                     >
                       Shift+Enter
                     </button>
+                    <button
+                      type="button"
+                      className="termMobileKeyBtn"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        sendTermInput("\u001b\r");
+                      }}
+                    >
+                      Alt+Enter
+                    </button>
                   </div>
+                  {agentMobileQuickKeys.length ? (
+                    <div className="termMobileKeysRow">
+                      {agentMobileQuickKeys.map((key) => (
+                        <button
+                          key={`agent-key-top-${key.id}`}
+                          type="button"
+                          className="termMobileKeyBtn"
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            sendTermInput(key.data);
+                          }}
+                        >
+                          {key.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
                 </div>
@@ -4573,7 +4639,34 @@ export function App() {
                     >
                       Shift+Enter
                     </button>
+                    <button
+                      type="button"
+                      className="termMobileKeyBtn"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        sendTermInput("\u001b\r");
+                      }}
+                    >
+                      Alt+Enter
+                    </button>
                   </div>
+                  {agentMobileQuickKeys.length ? (
+                    <div className="termMobileKeysRow">
+                      {agentMobileQuickKeys.map((key) => (
+                        <button
+                          key={`agent-key-mobile-${key.id}`}
+                          type="button"
+                          className="termMobileKeyBtn"
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            sendTermInput(key.data);
+                          }}
+                        >
+                          {key.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
