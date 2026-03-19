@@ -7,9 +7,11 @@
 <p align="center">
   <a href="./README.md">English</a> ·
   <a href="#安装推荐">安装</a> ·
+  <a href="#linux-manual-install">Linux 安装</a> ·
   <a href="#快速使用">快速使用</a> ·
   <a href="#开发者模式源码启动">开发者模式</a> ·
-  <a href="#一键部署installsh--bash">一键部署</a>
+  <a href="#一键部署installsh--bash">一键部署</a> ·
+  <a href="#terminal-run-user-linux">运行用户</a>
 </p>
 
 <p align="center">
@@ -49,6 +51,42 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 - `CODESENTINEL_BRANCH`（默认：`main`）
 - `CODESENTINEL_DIR`（默认：`~/CodeSentinel`）
 - `CODESENTINEL_START`（`1` 自动启动，`0` 跳过）
+
+<a id="linux-manual-install"></a>
+## Linux 手动安装
+
+### 1）依赖准备
+
+- Git、curl、编译工具
+- Node.js `>= 18`
+- pnpm `>= 10`（推荐通过 Corepack）
+
+Ubuntu / Debian 示例：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl ca-certificates build-essential
+corepack enable
+corepack prepare pnpm@10.4.0 --activate
+```
+
+### 2）安装并启动
+
+```bash
+git clone https://github.com/Its-PocketAI/CodeSentinel.git /opt/data/CodeSentinal
+cd /opt/data/CodeSentinal
+pnpm install
+cp config/config.example.json config/config.json
+./run/prod-start.sh
+```
+
+### 3）停止 / 重启
+
+```bash
+cd /opt/data/CodeSentinal
+./run/prod-stop.sh
+./run/prod-start.sh
+```
 
 ## 快速使用
 
@@ -159,6 +197,21 @@ cp config/config.example.json config/config.json
 - `tooling.bins.*`、`tooling.checkArgs.*`
 - `defaultProjectUser`、`projectUsers[]`（Linux 专属用户模型）
 
+<a id="terminal-run-user-linux"></a>
+## 终端运行用户（Linux）
+
+`./run/prod-start.sh` 与 `./run/dev-start.sh` 的实际行为如下：
+
+| 启动身份 | 终端默认用户 | 自动创建用户 | `projectUsers[]` 行为 |
+| --- | --- | --- | --- |
+| 以 `root` 启动 | `CODESENTINEL_DEFAULT_USER` -> `config.defaultProjectUser` -> `codesentinel` | 会（目标是 `root` 时除外） | 可生效（目标用户存在且权限允许） |
+| 以非 root 启动 | 当前系统登录用户（`$USER`） | 不会 | 不会提权，涉及其他用户的规则会被忽略 |
+
+说明：
+- root 模式支持专属运行用户，并可自动创建默认用户。
+- 非 root 模式固定使用当前用户上下文（本地开发推荐）。
+- 当 `roots` 为空时，CodeSentinel 会默认使用当前运行用户的 Home 目录作为初始项目根目录。
+
 ## 移动端体验说明
 
 - 方向键不会自动唤起系统键盘，需要手动点 `⌨️`
@@ -178,6 +231,15 @@ PowerShell 脚本：
 .\run\dev-stop.ps1
 .\run\prod-start.ps1
 .\run\prod-stop.ps1
+```
+
+Linux 脚本入口：
+
+```bash
+./run/dev-start.sh
+./run/dev-stop.sh
+./run/prod-start.sh
+./run/prod-stop.sh
 ```
 
 ## 反向代理（可选）

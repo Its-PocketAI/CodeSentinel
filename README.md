@@ -7,9 +7,11 @@
 <p align="center">
   <a href="./README.zh-CN.md">中文</a> ·
   <a href="#install-recommended">Install</a> ·
+  <a href="#linux-manual-install">Linux Install</a> ·
   <a href="#quick-start">Quick Start</a> ·
   <a href="#developer-mode-from-source">Developer Mode</a> ·
-  <a href="#one-click-deploy-installsh--bash">One-Click Deploy</a>
+  <a href="#one-click-deploy-installsh--bash">One-Click Deploy</a> ·
+  <a href="#terminal-run-user-linux">Run-As User</a>
 </p>
 
 <p align="center">
@@ -49,6 +51,42 @@ Available env vars:
 - `CODESENTINEL_BRANCH` (default: `main`)
 - `CODESENTINEL_DIR` (default: `~/CodeSentinel`)
 - `CODESENTINEL_START` (`1` auto-start, `0` skip start)
+
+<a id="linux-manual-install"></a>
+## Linux Install (Manual)
+
+### 1) Prerequisites
+
+- Git, curl, build tools
+- Node.js `>= 18`
+- pnpm `>= 10` (via Corepack recommended)
+
+Example (Ubuntu/Debian):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl ca-certificates build-essential
+corepack enable
+corepack prepare pnpm@10.4.0 --activate
+```
+
+### 2) Install and Start
+
+```bash
+git clone https://github.com/Its-PocketAI/CodeSentinel.git /opt/data/CodeSentinal
+cd /opt/data/CodeSentinal
+pnpm install
+cp config/config.example.json config/config.json
+./run/prod-start.sh
+```
+
+### 3) Stop / Restart
+
+```bash
+cd /opt/data/CodeSentinal
+./run/prod-stop.sh
+./run/prod-start.sh
+```
 
 ## Quick Start
 
@@ -160,6 +198,21 @@ Important fields:
 - `tooling.bins.*` and `tooling.checkArgs.*`
 - `defaultProjectUser`, `projectUsers[]` (Linux run-as model)
 
+<a id="terminal-run-user-linux"></a>
+## Terminal Run User (Linux)
+
+Actual behavior of `./run/prod-start.sh` and `./run/dev-start.sh`:
+
+| Startup identity | Terminal default user | Auto-create user | `projectUsers[]` behavior |
+| --- | --- | --- | --- |
+| Start as `root` | `CODESENTINEL_DEFAULT_USER` -> `config.defaultProjectUser` -> `codesentinel` | Yes (except when target is `root`) | Effective when target user exists and has permission |
+| Start as non-root | Current OS login user (`$USER`) | No | Cannot elevate; rules requiring other users are ignored |
+
+Notes:
+- Root mode supports dedicated per-project users and can create the default user automatically.
+- Non-root mode stays in the current user context (recommended for local development).
+- If `roots` is empty, CodeSentinel defaults to that runtime user's home directory as initial project root.
+
 ## Mobile UX Notes
 
 - D-pad keys do not auto-open system keyboard.
@@ -180,6 +233,15 @@ PowerShell scripts are included:
 .\run\dev-stop.ps1
 .\run\prod-start.ps1
 .\run\prod-stop.ps1
+```
+
+For Linux scripts, use:
+
+```bash
+./run/dev-start.sh
+./run/dev-stop.sh
+./run/prod-start.sh
+./run/prod-stop.sh
 ```
 
 ## Reverse Proxy (Optional)
