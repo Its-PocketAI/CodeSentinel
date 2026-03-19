@@ -2485,6 +2485,8 @@ export function App() {
   useEffect(() => {
     if (typeof document === "undefined") return;
     document.documentElement.style.setProperty("--ui-font-size", `${uiFontSize}px`);
+    const scale = uiFontSize / DEFAULT_UI_STATE.fontSize;
+    document.documentElement.style.setProperty("--ui-font-scale", Number.isFinite(scale) ? scale.toFixed(3) : "1");
   }, [uiFontSize]);
 
   // Terminal init: only when a mode that shows the terminal (Codex/Claude/OpenCode/Restricted/cursor-cli).
