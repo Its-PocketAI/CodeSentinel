@@ -6,6 +6,15 @@ PID_FILE="$ROOT_DIR/run/prod.pid"
 LOG_DIR="$ROOT_DIR/logs"
 LOG_FILE="$LOG_DIR/prod.log"
 
+is_codesentinel_pid() {
+  local pid="$1"
+  [[ -n "$pid" ]] || return 1
+  [[ -r "/proc/$pid/cmdline" ]] || return 1
+  local cmdline
+  cmdline="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+  [[ "$cmdline" == *"pnpm start"* ]] || [[ "$cmdline" == *"apps/server/dist/index.js"* ]] || [[ "$cmdline" == *"CODESENTINEL_SERVE_WEB=1"* ]]
+}
+
 resolve_default_user() {
   if [[ -n "${CODESENTINEL_DEFAULT_USER:-}" ]]; then
     echo "$CODESENTINEL_DEFAULT_USER"
@@ -48,8 +57,14 @@ fi
 if [[ -f "$PID_FILE" ]]; then
   PID="$(cat "$PID_FILE" 2>/dev/null || true)"
   if [[ -n "${PID}" ]] && kill -0 "$PID" 2>/dev/null; then
-    echo "Already running (pid $PID)"
-    exit 0
+    if is_codesentinel_pid "$PID"; then
+      echo "Already running (pid $PID)"
+      exit 0
+    fi
+    echo "Stale pid file detected (pid $PID belongs to another process), cleaning up."
+    rm -f "$PID_FILE"
+  else
+    rm -f "$PID_FILE"
   fi
 fi
 
@@ -59,14 +74,14 @@ cd "$ROOT_DIR"
 pnpm build >> "$LOG_FILE" 2>&1
 
 if command -v setsid >/dev/null 2>&1; then
-  setsid bash -c "CODESENTINEL_SERVE_WEB=1 NODE_ENV=production pnpm start >> \"$LOG_FILE\" 2>&1" &
+  setsid bash -lc "cd \"$ROOT_DIR\" && CODESENTINEL_SERVE_WEB=1 NODE_ENV=production exec pnpm start >> \"$LOG_FILE\" 2>&1" &
   echo $! > "$PID_FILE"
 else
-  nohup bash -c "CODESENTINEL_SERVE_WEB=1 NODE_ENV=production pnpm start >> \"$LOG_FILE\" 2>&1" >/dev/null 2>&1 &
+  nohup bash -lc "cd \"$ROOT_DIR\" && CODESENTINEL_SERVE_WEB=1 NODE_ENV=production exec pnpm start >> \"$LOG_FILE\" 2>&1" >/dev/null 2>&1 &
   echo $! > "$PID_FILE"
 fi
 
-sleep 1
+sleep 2
 PID="$(cat "$PID_FILE" 2>/dev/null || true)"
 if [[ -z "${PID}" ]] || ! kill -0 "$PID" 2>/dev/null; then
   echo "Failed to start. Check $LOG_FILE"

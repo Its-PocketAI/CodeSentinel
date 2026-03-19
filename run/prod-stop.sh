@@ -17,10 +17,16 @@ if [[ -z "${PID}" ]]; then
 fi
 
 if kill -0 "$PID" 2>/dev/null; then
-  kill "$PID" 2>/dev/null || true
-  sleep 1
+  kill -TERM "-$PID" 2>/dev/null || kill -TERM "$PID" 2>/dev/null || true
+  for _ in {1..20}; do
+    if kill -0 "$PID" 2>/dev/null; then
+      sleep 0.5
+    else
+      break
+    fi
+  done
   if kill -0 "$PID" 2>/dev/null; then
-    kill -9 "$PID" 2>/dev/null || true
+    kill -KILL "-$PID" 2>/dev/null || kill -KILL "$PID" 2>/dev/null || true
   fi
 fi
 
