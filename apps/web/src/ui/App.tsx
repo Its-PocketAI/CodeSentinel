@@ -1432,9 +1432,9 @@ export function App() {
   useEffect(() => {
     if (settingsTouchedRef.current) return;
     if (isMobile) {
-      setSettingsOpen({ tools: true, language: false, security: false });
+      setSettingsOpen({ tools: true, preference: false, language: false, security: false });
     } else {
-      setSettingsOpen({ tools: true, language: true, security: true });
+      setSettingsOpen({ tools: true, preference: true, language: true, security: true });
     }
   }, [isMobile]);
 
