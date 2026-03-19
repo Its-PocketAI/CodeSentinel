@@ -53,6 +53,28 @@ pnpm dev
 
 Windows note: WSL is recommended for best compatibility (PTY, CLI tools, and filesystem paths).
 
+---
+
+## Windows (PowerShell)
+
+Prereqs: Node.js 18+ and pnpm in PATH.
+
+Dev (background):
+```powershell
+.\run\dev-start.ps1
+.\run\dev-stop.ps1
+```
+
+Prod:
+```powershell
+.\run\prod-start.ps1
+.\run\prod-stop.ps1
+```
+
+Notes:
+- Root paths accept `C:\\Users\\...` or `C:/Users/...`.
+- Terminal sessions run under the current Windows user.
+
 Run in background (optional):
 ```bash
 ./run/dev-start.sh

@@ -4,7 +4,7 @@ import path from "node:path";
 export function normalizeRoot(p: string) {
   const abs = path.resolve(p);
   // Strip trailing slash for consistent prefix checks.
-  return abs.replace(/\/+$/, "") || "/";
+  return abs.replace(/[\\/]+$/, "") || "/";
 }
 
 export async function normalizeRoots(roots: string[]) {
@@ -45,4 +45,3 @@ export async function validatePathInRoots(inputPath: string, roots: string[]) {
   }
   throw new Error("Path is outside configured roots");
 }
-

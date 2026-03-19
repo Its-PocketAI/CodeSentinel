@@ -221,21 +221,51 @@ function normalizeUiState(input: UiState | null | undefined): UiState {
 }
 
 function baseName(p: string) {
-  const clean = p.replace(/\/+$/, "");
-  const parts = clean.split("/");
+  if (!p) return p;
+  const clean = p.replace(/[\\/]+$/, "");
+  const normalized = clean.replace(/\\/g, "/");
+  const parts = normalized.split("/");
   return parts[parts.length - 1] || clean;
 }
 
 function dirName(p: string) {
-  const clean = p.replace(/\/+$/, "");
-  const idx = clean.lastIndexOf("/");
-  if (idx <= 0) return clean.startsWith("/") ? "/" : "";
-  return clean.slice(0, idx);
+  if (!p) return p;
+  const sep = /[\\]/.test(p) || /^[a-zA-Z]:[\\/]/.test(p) ? "\\" : "/";
+  const clean = p.replace(/[\\/]+$/, "");
+  if (!clean) return sep;
+  const normalized = clean.replace(/\\/g, "/");
+  const idx = normalized.lastIndexOf("/");
+  if (idx < 0) {
+    return /^[a-zA-Z]:$/.test(normalized) ? normalized + sep : "";
+  }
+  if (idx === 0) return sep;
+  let dir = normalized.slice(0, idx);
+  if (/^[a-zA-Z]:$/.test(dir)) dir += sep;
+  if (sep === "\\") dir = dir.replace(/\//g, "\\");
+  return dir;
 }
 
 function joinPath(parent: string, name: string) {
-  if (parent.endsWith("/")) return parent + name;
-  return parent + "/" + name;
+  if (!parent) return name;
+  const sep = /[\\]/.test(parent) || /^[a-zA-Z]:/.test(parent) ? "\\" : "/";
+  const trimmed = parent.replace(/[\\/]+$/, "");
+  if (!trimmed) return sep + name;
+  return trimmed + sep + name;
+}
+
+function normalizePathForCompare(p: string) {
+  const normalized = p.replace(/\\/g, "/");
+  const isWin = /^[a-zA-Z]:/.test(normalized) || p.includes("\\");
+  return isWin ? normalized.toLowerCase() : normalized;
+}
+
+function pathStartsWithPath(path: string, root: string) {
+  if (!path || !root) return false;
+  const p = normalizePathForCompare(path);
+  const r = normalizePathForCompare(root);
+  if (p === r) return true;
+  const prefix = r.endsWith("/") ? r : r + "/";
+  return p.startsWith(prefix);
 }
 
 function bytes(n: number) {
@@ -954,7 +984,7 @@ export function App() {
     const set = userCollapsedByRootRef.current.get(root);
     if (!set || set.size === 0) return false;
     for (const collapsed of set) {
-      if (path === collapsed || path.startsWith(`${collapsed}/`)) return true;
+      if (pathStartsWithPath(path, collapsed)) return true;
     }
     return false;
   }, []);
@@ -1711,7 +1741,7 @@ export function App() {
       if (roots.length === 0) return "";
       let best = "";
       for (const r of roots) {
-        if (cwd === r || cwd.startsWith(r + "/")) {
+        if (pathStartsWithPath(cwd, r)) {
           if (r.length > best.length) best = r;
         }
       }
@@ -1793,12 +1823,12 @@ export function App() {
       initializedCwdRef.current = true;
       const savedCwd = getStored("terminalCwd");
       // Only use saved cwd if it starts with the active root (valid path)
-      if (savedCwd && savedCwd.startsWith(activeRoot)) {
+      if (savedCwd && pathStartsWithPath(savedCwd, activeRoot)) {
         setTerminalCwd(savedCwd);
         return;
       }
     }
-    if (!terminalCwd || !terminalCwd.startsWith(activeRoot)) {
+    if (!terminalCwd || !pathStartsWithPath(terminalCwd, activeRoot)) {
       setTerminalCwd(activeRoot);
     }
   }, [activeRoot, terminalCwd]);
@@ -1817,7 +1847,7 @@ export function App() {
 
   useEffect(() => {
     if (!activeRoot || !terminalCwd) return;
-    if (!terminalCwd.startsWith(activeRoot)) return;
+    if (!pathStartsWithPath(terminalCwd, activeRoot)) return;
     setStored(`lastExplorerPath:${activeRoot}`, terminalCwd);
   }, [activeRoot, terminalCwd]);
 
@@ -1827,17 +1857,17 @@ export function App() {
 
   const explorerTargetPath = useMemo(() => {
     if (!activeRoot) return "";
-    if (explorerUserPath && explorerUserPath.startsWith(activeRoot)) return explorerUserPath;
-    if (terminalCwd && terminalCwd.startsWith(activeRoot)) return terminalCwd;
+    if (explorerUserPath && pathStartsWithPath(explorerUserPath, activeRoot)) return explorerUserPath;
+    if (terminalCwd && pathStartsWithPath(terminalCwd, activeRoot)) return terminalCwd;
     const saved = getStored(`lastExplorerPath:${activeRoot}`) || "";
-    if (saved && saved.startsWith(activeRoot)) return saved;
+    if (saved && pathStartsWithPath(saved, activeRoot)) return saved;
     return activeRoot;
   }, [activeRoot, terminalCwd, explorerUserPath]);
 
   useEffect(() => {
     if (!explorerTargetPath) return;
     setSelectedExplorerPath((prev) => {
-      if (prev && activeRoot && prev.startsWith(activeRoot)) return prev;
+      if (prev && activeRoot && pathStartsWithPath(prev, activeRoot)) return prev;
       return explorerTargetPath;
     });
   }, [explorerTargetPath, activeRoot]);
@@ -1886,7 +1916,7 @@ export function App() {
 
   useEffect(() => {
     if (!activeRoot || !explorerTargetPath) return;
-    if (!explorerTargetPath.startsWith(activeRoot)) return;
+    if (!pathStartsWithPath(explorerTargetPath, activeRoot)) return;
     if (!treeRef.current) return;
     if (expandingTreeRef.current) return;
 
@@ -2002,7 +2032,7 @@ export function App() {
     if (restoredRootRef.current === activeRoot) return;
     let cancelled = false;
     const restoreFromPath = async (path: string) => {
-      if (!path.startsWith(activeRoot)) return;
+      if (!pathStartsWithPath(path, activeRoot)) return;
       const guard = await ensureLargeFileAllowed(path);
       if (!guard.ok) return;
       const r = await apiRead(path, guard.force ? { maxBytes: LARGE_FILE_HARD_LIMIT_BYTES } : undefined);
@@ -2290,14 +2320,14 @@ export function App() {
     setFileStateByPath((prev) => {
       const next = { ...prev };
       for (const key of Object.keys(next)) {
-        if (key === targetPath || key.startsWith(`${targetPath}/`)) {
+        if (pathStartsWithPath(key, targetPath)) {
           delete next[key];
         }
       }
       return next;
     });
     setOpenTabs((prev) => {
-      const nextTabs = prev.filter((p) => !(p === targetPath || p.startsWith(`${targetPath}/`)));
+      const nextTabs = prev.filter((p) => !pathStartsWithPath(p, targetPath));
       if (activeFile && !nextTabs.includes(activeFile)) {
         setActiveFile(nextTabs[nextTabs.length - 1] ?? "");
       }

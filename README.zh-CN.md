@@ -53,6 +53,28 @@ pnpm dev
 
 Windows 建议：推荐使用 WSL 运行以获得更好的兼容性（PTY、CLI 工具与路径处理）。
 
+---
+
+## Windows（PowerShell）
+
+前置：Node.js 18+ 与 pnpm 已加入 PATH。
+
+开发（后台）：
+```powershell
+.\run\dev-start.ps1
+.\run\dev-stop.ps1
+```
+
+生产：
+```powershell
+.\run\prod-start.ps1
+.\run\prod-stop.ps1
+```
+
+说明：
+- 根目录路径可使用 `C:\\Users\\...` 或 `C:/Users/...`。
+- 终端会话以当前 Windows 用户运行。
+
 后台启动（可选）：
 ```bash
 ./run/dev-start.sh
