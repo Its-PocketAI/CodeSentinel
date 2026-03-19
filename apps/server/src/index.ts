@@ -14,7 +14,7 @@ import Busboy from "busboy";
 import { loadConfig, rootsOverridePath, readRootsOverride } from "./config.js";
 import { normalizeRoots, validatePathInRoots } from "./pathGuard.js";
 import { listDir, readTextFile, writeTextFile, createDir, statPath } from "./fsApi.js";
-import { attachTermWs, listActiveTermSessions } from "./term/wsTerm.js";
+import { attachTermWs, closeActiveTermSession, listActiveTermSessions } from "./term/wsTerm.js";
 import { getDataDir } from "./paths.js";
 import { snapshotManager } from "./term/snapshotManager.js";
 import { readSessionMeta } from "./term/recording.js";
@@ -1502,6 +1502,7 @@ async function main() {
       const active = listActiveTermSessions();
       const activeMap = new Map(active.map((s) => [s.sessionId, s]));
       const rows: Array<{ sessionId: string; updatedAt: number; sizeBytes: number; cwd?: string; mode?: string; active?: boolean }> = [];
+      const seen = new Set<string>();
       const entries = fs.readdirSync(base, { withFileTypes: true });
       for (const ent of entries) {
         if (!ent.isDirectory()) continue;
@@ -1514,7 +1515,20 @@ async function main() {
           const live = activeMap.get(sessionId);
           const meta = live ?? readSessionMeta(sessionId);
           rows.push({ sessionId, updatedAt: st.mtimeMs, sizeBytes: st.size, cwd: meta?.cwd, mode: meta?.mode, active: Boolean(live) });
+          seen.add(sessionId);
         } catch {}
+      }
+      const now = Date.now();
+      for (const live of active) {
+        if (seen.has(live.sessionId)) continue;
+        rows.push({
+          sessionId: live.sessionId,
+          updatedAt: now,
+          sizeBytes: 0,
+          cwd: live.cwd,
+          mode: live.mode,
+          active: true,
+        });
       }
       rows.sort((a, b) => b.updatedAt - a.updatedAt);
       res.json({ ok: true, sessions: rows.slice(0, limit) });
@@ -1530,12 +1544,16 @@ async function main() {
       return;
     }
     try {
+      const closedLive = closeActiveTermSession(sessionId);
       const baseDir = path.join(getDataDir(), "term", sessionId);
-      if (!fs.existsSync(baseDir)) {
+      const hasRecordings = fs.existsSync(baseDir);
+      if (!hasRecordings && !closedLive) {
         return res.status(404).json({ ok: false, error: "not found" });
       }
-      fs.rmSync(baseDir, { recursive: true, force: true });
-      return res.json({ ok: true });
+      if (hasRecordings) {
+        fs.rmSync(baseDir, { recursive: true, force: true });
+      }
+      return res.json({ ok: true, closedLive, removedRecording: hasRecordings });
     } catch (e: any) {
       res.status(500).json({ ok: false, error: e?.message ?? String(e) });
     }

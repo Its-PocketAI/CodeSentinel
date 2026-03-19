@@ -491,6 +491,20 @@ input {
   flex-shrink: 0;
 }
 
+.termMobilePanelRow {
+  width: 100%;
+}
+
+.termMobilePanelSwitch {
+  width: 100%;
+  display: flex;
+}
+
+.termMobilePanelSwitch .segBtn {
+  flex: 1 1 0;
+  text-align: center;
+}
+
 .termPasteBtn {
   flex-shrink: 0;
   padding: calc(5px * var(--ui-font-scale)) calc(10px * var(--ui-font-scale));
@@ -537,6 +551,14 @@ input {
   white-space: nowrap;
   min-width: 0;
   width: 100%;
+}
+
+.termWindowsWrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 粘贴到终端弹窗 */

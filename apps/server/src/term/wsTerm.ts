@@ -18,6 +18,9 @@ import type { RunAsUser } from "../userRunAs.js";
 
 type ActiveSessionMeta = { sessionId: string; cwd: string; mode: string };
 let activeSessionRef: Map<string, { cwd: string; mode: string }> | null = null;
+type SessionOwnerRef = { manager: { close: (sessionId: string) => void }; mode: string };
+let activeSessionOwnerRef: Map<string, SessionOwnerRef> | null = null;
+let activeSessionCleanupRef: ((sessionId: string) => void) | null = null;
 
 export function listActiveTermSessions(): ActiveSessionMeta[] {
   const ref = activeSessionRef;
@@ -27,6 +30,19 @@ export function listActiveTermSessions(): ActiveSessionMeta[] {
     rows.push({ sessionId, cwd: meta.cwd, mode: meta.mode });
   }
   return rows;
+}
+
+export function closeActiveTermSession(sessionId: string): boolean {
+  const owners = activeSessionOwnerRef;
+  const cleanup = activeSessionCleanupRef;
+  if (!owners || !cleanup) return false;
+  const owner = owners.get(sessionId);
+  if (!owner) return false;
+  try {
+    owner.manager.close(sessionId);
+  } catch {}
+  cleanup(sessionId);
+  return true;
 }
 
 function safeJsonParse(text: string): any | null {
@@ -108,6 +124,8 @@ export function attachTermWs(opts: {
 
   // Expose current active sessions to the HTTP layer (read-only).
   activeSessionRef = sessionMeta;
+  activeSessionOwnerRef = sessionOwners;
+  activeSessionCleanupRef = cleanupSession;
 
   // Global managers (shared across websocket connections).
   const term = new TermManager({

@@ -652,6 +652,7 @@ export function App() {
   const { t, lang, setLang } = useI18n();
   const [isMobile, setIsMobile] = useState(false);
   const [mobileTab, setMobileTab] = useState<"explorer" | "editor" | "terminal" | "settings">(DEFAULT_UI_STATE.mobileTab);
+  const [mobileTerminalPanel, setMobileTerminalPanel] = useState<"terminal" | "windows">("terminal");
   const [mobileWorkspaceDrawerOpen, setMobileWorkspaceDrawerOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"edit" | "preview">(DEFAULT_UI_STATE.editorMode);
   const [leftWidth, setLeftWidth] = useState(DEFAULT_UI_STATE.leftWidth);
@@ -1164,6 +1165,7 @@ export function App() {
     }
     detachActiveSession(nextMode);
     setTermMode(nextMode);
+    if (isMobile) setMobileTerminalPanel("terminal");
     if (nextMode !== "cursor") {
       const saved = getSessionForMode(nextMode);
       if (saved?.sessionId) {
@@ -1175,7 +1177,7 @@ export function App() {
       termRef.current?.focus();
       setTimeout(() => termRef.current?.focus(), 50);
     }
-  }, [detachActiveSession, getSessionForMode]);
+  }, [detachActiveSession, getSessionForMode, isMobile]);
 
   const handleNewSession = useCallback(() => {
     if (termModeRef.current === "cursor") return;
@@ -1189,6 +1191,42 @@ export function App() {
     setOpenNonce((n) => n + 1);
   }, [detachActiveSession, terminalCwd]);
 
+  const recoverLatestActiveSession = useCallback(async (preferredMode?: TermMode) => {
+    try {
+      const res = await apiFetch("/api/term/sessions?limit=80");
+      const data = await res.json();
+      if (!data?.ok || !Array.isArray(data.sessions)) return false;
+      const activeRows = data.sessions.filter((s: any) => s?.active && typeof s?.sessionId === "string");
+      if (activeRows.length === 0) return false;
+
+      const target =
+        activeRows.find((s: any) => {
+          if (!preferredMode || preferredMode === "cursor") return true;
+          return mapSessionMode(s.mode).uiMode === preferredMode;
+        }) ?? activeRows[0];
+      if (!target?.sessionId) return false;
+
+      pendingAttachRef.current = {
+        sessionId: target.sessionId,
+        cwd: target.cwd,
+        mode: target.mode,
+        noFallback: true,
+      };
+      const mapped = mapSessionMode(target.mode);
+      if (mapped.uiMode !== termModeRef.current) setTermMode(mapped.uiMode);
+      if (mapped.cliMode !== cursorCliModeRef.current) setCursorCliMode(mapped.cliMode);
+      if (target.cwd && target.cwd !== terminalCwd) setTerminalCwd(target.cwd);
+      if (isMobile) {
+        setMobileTab("terminal");
+        setMobileTerminalPanel("terminal");
+      }
+      setRestoreNonce((n) => n + 1);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [isMobile, mapSessionMode, terminalCwd]);
+
   useEffect(() => {
     if (autoAttachPreparedRef.current) return;
     if (termSessionIdRef.current) {
@@ -1198,13 +1236,17 @@ export function App() {
     const raw =
       localStorage.getItem(LAST_TERM_SESSION_KEY);
     if (!raw) {
-      autoAttachPreparedRef.current = true;
+      void recoverLatestActiveSession(termModeRef.current).finally(() => {
+        autoAttachPreparedRef.current = true;
+      });
       return;
     }
     try {
       const saved = JSON.parse(raw) as { sessionId?: string; cwd?: string; mode?: string };
       if (!saved?.sessionId) {
-        autoAttachPreparedRef.current = true;
+        void recoverLatestActiveSession(termModeRef.current).finally(() => {
+          autoAttachPreparedRef.current = true;
+        });
         return;
       }
       pendingAttachRef.current = { sessionId: saved.sessionId, cwd: saved.cwd, mode: saved.mode, noFallback: true };
@@ -1212,12 +1254,17 @@ export function App() {
       if (mapped.uiMode !== termModeRef.current) setTermMode(mapped.uiMode);
       if (mapped.cliMode !== cursorCliModeRef.current) setCursorCliMode(mapped.cliMode);
       if (saved.cwd && saved.cwd !== terminalCwd) setTerminalCwd(saved.cwd);
-      if (isMobile) setMobileTab("terminal");
+      if (isMobile) {
+        setMobileTab("terminal");
+        setMobileTerminalPanel("terminal");
+      }
       autoAttachPreparedRef.current = true;
     } catch {
-      autoAttachPreparedRef.current = true;
+      void recoverLatestActiveSession(termModeRef.current).finally(() => {
+        autoAttachPreparedRef.current = true;
+      });
     }
-  }, [isMobile, mapSessionMode, terminalCwd]);
+  }, [isMobile, mapSessionMode, recoverLatestActiveSession, terminalCwd]);
 
   const handleRestoreSession = useCallback((s: { sessionId: string; cwd?: string; mode?: string }) => {
     pendingAttachRef.current = { sessionId: s.sessionId, cwd: s.cwd, mode: s.mode, noFallback: true };
@@ -1226,7 +1273,10 @@ export function App() {
     if (mapped.cliMode !== cursorCliModeRef.current) setCursorCliMode(mapped.cliMode);
     if (s.cwd) setTerminalCwd(s.cwd);
     setRestoreNonce((n) => n + 1);
-    if (isMobile) setMobileTab("terminal");
+    if (isMobile) {
+      setMobileTab("terminal");
+      setMobileTerminalPanel("terminal");
+    }
   }, [isMobile, mapSessionMode]);
 
   const terminalVisible = !isMobile || mobileTab === "terminal";
@@ -1270,10 +1320,14 @@ export function App() {
   }, [enabledToolIds, activeToolId]);
 
   useEffect(() => {
-    if (leftPanelTab === "windows") {
+    if (!isMobile && leftPanelTab === "windows") {
+      void refreshTermSessions();
+      return;
+    }
+    if (isMobile && mobileTab === "terminal" && mobileTerminalPanel === "windows") {
       void refreshTermSessions();
     }
-  }, [leftPanelTab, refreshTermSessions]);
+  }, [isMobile, leftPanelTab, mobileTab, mobileTerminalPanel, refreshTermSessions]);
 
   useEffect(() => {
     if (!uiStateLoadedRef.current) return;
@@ -2259,9 +2313,9 @@ export function App() {
     [resolveExplorerDir, refreshDirectoryInTree, t],
   );
 
-  const buildImageUploadDir = useCallback((cwd: string) => {
-    const base = cwd.replace(/\/+$/, "");
-    return joinPath(joinPath(base, "codesentinel"), "uploaded_pictures");
+  const buildImageUploadDir = useCallback((projectRoot: string) => {
+    const base = projectRoot.replace(/\/+$/, "");
+    return joinPath(joinPath(base, ".codesentinel"), "uplaod_pictures");
   }, []);
 
   const buildImageFileName = useCallback((file: File) => {
@@ -2277,7 +2331,8 @@ export function App() {
   }, []);
 
   const handleImageUploadClick = useCallback(() => {
-    if (!terminalCwd) {
+    const base = activeRoot || terminalCwd;
+    if (!base) {
       setStatus(t("[错误] 请先选择目录"));
       return;
     }
@@ -2286,26 +2341,27 @@ export function App() {
     if (!input) return;
     input.value = "";
     input.click();
-  }, [terminalCwd, isImageUploading, t]);
+  }, [activeRoot, terminalCwd, isImageUploading, t]);
 
   const handleImageUploadChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files ? e.target.files[0] : null;
       if (!file) return;
-      if (!terminalCwd) {
+      const baseRoot = activeRoot || terminalCwd;
+      if (!baseRoot) {
         setStatus(t("[错误] 请先选择目录"));
         return;
       }
       setIsImageUploading(true);
       try {
-        const uploadDir = buildImageUploadDir(terminalCwd);
+        const uploadDir = buildImageUploadDir(baseRoot);
         await apiMkdir(uploadDir);
         const fileName = buildImageFileName(file);
         await apiUploadFile(uploadDir, file, { fileName });
         await refreshDirectoryInTree(uploadDir);
-        const rel = `./codesentinel/uploaded_pictures/${fileName}`;
+        const rel = `./.codesentinel/uplaod_pictures/${fileName}`;
         sendTermInput(`@${rel} `);
-        setStatus(t("[成功] 已上传图片 {name}", { name: fileName }));
+        setStatus(t("[成功] 已ask image提问图片 {name}", { name: fileName }));
       } catch (e: any) {
         setStatus(t("[错误] 上传失败: {msg}", { msg: e?.message ?? String(e) }));
       } finally {
@@ -2313,7 +2369,7 @@ export function App() {
         if (imageUploadInputRef.current) imageUploadInputRef.current.value = "";
       }
     },
-    [terminalCwd, buildImageUploadDir, buildImageFileName, refreshDirectoryInTree, sendTermInput, t],
+    [activeRoot, terminalCwd, buildImageUploadDir, buildImageFileName, refreshDirectoryInTree, sendTermInput, t],
   );
 
   const dropTabsUnderPath = useCallback((targetPath: string) => {
@@ -2881,7 +2937,13 @@ export function App() {
     (async () => {
       const attachResult = await tryAttach();
       if (attachResult.ok) return;
-      if (attachResult.noFallback) return;
+      if (attachResult.noFallback) {
+        if (attachResult.error && /not found/i.test(attachResult.error)) {
+          const restored = await recoverLatestActiveSession(termModeRef.current);
+          if (restored) return;
+        }
+        return;
+      }
       const openReq = pendingOpenRef.current;
       if (!openReq) return;
       pendingOpenRef.current = null;
@@ -3029,7 +3091,7 @@ export function App() {
           setStatus(t("[错误] 终端: {msg}", { msg: e?.message ?? String(e) }));
       }
     })();
-  }, [terminalCwd, terminalVisible, termMode, cursorMode, cursorCliMode, restoreNonce, openNonce, buildOpenKey, mapSessionMode, ensureTermAttached, saveSessionForMode, fitAndResize]);
+  }, [terminalCwd, terminalVisible, termMode, cursorMode, cursorCliMode, restoreNonce, openNonce, buildOpenKey, mapSessionMode, ensureTermAttached, saveSessionForMode, fitAndResize, recoverLatestActiveSession]);
 
   const settingsTools = toolSettings.filter((t): t is UiToolSetting & { id: ToolId } => isToolId(t.id));
   const aiTools = settingsTools.filter((t) => t.id !== "command");
@@ -3344,34 +3406,40 @@ export function App() {
     </div>
   );
 
+  const explorerPanelTab: "files" | "settings" | "windows" = isMobile ? "files" : leftPanelTab;
+
   const ExplorerPanel = (
     <div className={"panel" + (isMobile && mobileTab !== "explorer" ? " hidden" : "")} style={{ flex: isMobile ? 1 : undefined }}>
       <div className="panelHeader" style={{ flexDirection: "column", alignItems: "stretch" }}>
         <div className="leftToggle">
           <button
             type="button"
-            className={"leftToggleBtn" + (leftPanelTab === "files" ? " leftToggleBtnActive" : "")}
+            className={"leftToggleBtn" + (explorerPanelTab === "files" ? " leftToggleBtnActive" : "")}
             onClick={() => setLeftPanelTab("files")}
           >
             {t("文件")}
           </button>
-          <button
-            type="button"
-            className={"leftToggleBtn" + (leftPanelTab === "settings" ? " leftToggleBtnActive" : "")}
-            onClick={() => setLeftPanelTab("settings")}
-          >
-            {t("设置")}
-          </button>
-          <button
-            type="button"
-            className={"leftToggleBtn" + (leftPanelTab === "windows" ? " leftToggleBtnActive" : "")}
-            onClick={() => setLeftPanelTab("windows")}
-          >
-            {t("窗口")}
-          </button>
+          {!isMobile ? (
+            <>
+              <button
+                type="button"
+                className={"leftToggleBtn" + (explorerPanelTab === "settings" ? " leftToggleBtnActive" : "")}
+                onClick={() => setLeftPanelTab("settings")}
+              >
+                {t("设置")}
+              </button>
+              <button
+                type="button"
+                className={"leftToggleBtn" + (explorerPanelTab === "windows" ? " leftToggleBtnActive" : "")}
+                onClick={() => setLeftPanelTab("windows")}
+              >
+                {t("窗口")}
+              </button>
+            </>
+          ) : null}
         </div>
 
-        {leftPanelTab === "files" ? (
+        {explorerPanelTab === "files" ? (
           <div className="row" style={{ gap: 6, marginTop: 6 }}>
             <button
               type="button"
@@ -3404,7 +3472,7 @@ export function App() {
         ) : null}
       </div>
       <div className="panelBody">
-        {leftPanelTab === "files" ? (
+        {explorerPanelTab === "files" ? (
           <div className="fileList" ref={(el) => {
             if (el) fileListRef.current = el;
           }}>
@@ -3426,7 +3494,7 @@ export function App() {
               <div className="fileMeta">{ready ? t("加载中…") : t("无根目录")}</div>
             )}
           </div>
-        ) : leftPanelTab === "settings" ? (
+        ) : explorerPanelTab === "settings" ? (
           SettingsPanel
         ) : (
           WindowsPanel
@@ -3839,6 +3907,11 @@ export function App() {
                 {terminalCwd ? t("工作目录: {path}", { path: terminalCwd }) : ""}
               </div>
             </div>
+            {isMobile && mobileTerminalPanel === "windows" ? (
+              <div className="termWindowsWrap">
+                {WindowsPanel}
+              </div>
+            ) : (
             <div
               className={
                 "termAreaWrap" +
@@ -3957,15 +4030,15 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
-                      disabled={!terminalCwd || isImageUploading}
+                      disabled={!(activeRoot || terminalCwd) || isImageUploading}
                       onPointerDown={(e) => {
                         e.preventDefault();
                         handleImageUploadClick();
                       }}
-                      title={t("上传图片")}
-                      aria-label={t("上传图片")}
+                      title={t("ask image 提问图片")}
+                      aria-label={t("ask image 提问图片")}
                     >
-                      {isImageUploading ? t("上传中…") : t("上传图片")}
+                      {isImageUploading ? t("上传中…") : t("ask image 提问图片")}
                     </button>
                     <button
                       type="button"
@@ -4021,6 +4094,7 @@ export function App() {
                 </div>
               ) : null}
                 </div>
+            )}
               </div>
             </div>
       </div>
@@ -4186,6 +4260,27 @@ export function App() {
             style={{ flex: 1, minHeight: "65dvh" }}
           >
             <div className="panelHeader termPanelHeader">
+              {isMobile ? (
+                <div className="termPanelHeaderRow termMobilePanelRow">
+                  <div className="segmented termMobilePanelSwitch" aria-label={t("窗口列表")}>
+                    <button
+                      className={"segBtn" + (mobileTerminalPanel === "terminal" ? " segBtnActive" : "")}
+                      onClick={() => setMobileTerminalPanel("terminal")}
+                    >
+                      {t("终端")}
+                    </button>
+                    <button
+                      className={"segBtn" + (mobileTerminalPanel === "windows" ? " segBtnActive" : "")}
+                      onClick={() => {
+                        setMobileTerminalPanel("windows");
+                        void refreshTermSessions();
+                      }}
+                    >
+                      {t("窗口列表")}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <div className="termPanelHeaderRow">
                 <div className="segmented" aria-label={t("终端模式")}>
                   {enabledToolIds.map((id) => {
@@ -4206,7 +4301,7 @@ export function App() {
                 {activeToolId === "command" ? (
                   <span className="termBadge">{t("受限命令行")}</span>
                 ) : null}
-                {termMode !== "cursor" && (
+                {termMode !== "cursor" && (!isMobile || mobileTerminalPanel === "terminal") && (
                   <>
                     <button
                       type="button"
@@ -4244,6 +4339,11 @@ export function App() {
                 </div>
               )}
             </div>
+            {isMobile && mobileTerminalPanel === "windows" ? (
+              <div className="termWindowsWrap">
+                {WindowsPanel}
+              </div>
+            ) : (
             <div
               className={
                 "termAreaWrap" +
@@ -4367,15 +4467,15 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
-                      disabled={!terminalCwd || isImageUploading}
+                      disabled={!(activeRoot || terminalCwd) || isImageUploading}
                       onPointerDown={(e) => {
                         e.preventDefault();
                         handleImageUploadClick();
                       }}
-                      title={t("上传图片")}
-                      aria-label={t("上传图片")}
+                      title={t("ask image 提问图片")}
+                      aria-label={t("ask image 提问图片")}
                     >
-                      {isImageUploading ? t("上传中…") : t("上传图片")}
+                      {isImageUploading ? t("上传中…") : t("ask image 提问图片")}
                     </button>
                     <button
                       type="button"
@@ -4431,6 +4531,7 @@ export function App() {
                 </div>
               ) : null}
             </div>
+            )}
           </div>
         </div>
       ) : null}

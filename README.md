@@ -91,8 +91,8 @@ Logs:
 
 - The on-screen terminal keys (Up/Down/Left/Right/Enter) do not auto-open the OS keyboard.
 - Tap the ⌨️ button to open the keyboard when you need to type.
-- The Upload Image button (second row) uploads to `./codesentinel/uploaded_pictures` under the current project
-  and inserts `@./codesentinel/uploaded_pictures/<filename>` into the terminal input.
+- The ask image button (second row) uploads to `./.codesentinel/uplaod_pictures` under the current project root
+  and inserts `@./.codesentinel/uplaod_pictures/<filename>` into the terminal input.
 
 ---
 

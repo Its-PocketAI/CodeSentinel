@@ -29,6 +29,31 @@ window.addEventListener("unhandledrejection", (event) => {
   }
 });
 
+type BoundaryState = { error: Error | null };
+
+class AppErrorBoundary extends React.Component<{ children: React.ReactNode }, BoundaryState> {
+  state: BoundaryState = { error: null };
+
+  static getDerivedStateFromError(error: Error): BoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("[AppErrorBoundary]", error);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 16, fontFamily: "var(--mono)", whiteSpace: "pre-wrap", color: "#b91c1c" }}>
+          {"[App Crash] " + (this.state.error.stack || this.state.error.message || String(this.state.error))}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function Root() {
   const { t, lang, setLang } = useI18n();
   const [hash, setHash] = useState(() => window.location.hash || "#/");
@@ -392,7 +417,9 @@ function Root() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <I18nProvider>
-    <Root />
-  </I18nProvider>,
+  <AppErrorBoundary>
+    <I18nProvider>
+      <Root />
+    </I18nProvider>
+  </AppErrorBoundary>,
 );
