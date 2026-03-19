@@ -1602,7 +1602,7 @@ async function main() {
       const maxRaw = String(req.query.maxBytes ?? "");
       const maxReq = Number(maxRaw);
       const hardLimit = 50 * 1024 * 1024;
-      const defaultLimit = 2 * 1024 * 1024;
+      const defaultLimit = 10 * 1024 * 1024;
       const maxBytes = Number.isFinite(maxReq) && maxReq > 0 ? Math.min(maxReq, hardLimit) : defaultLimit;
       const r = await readTextFile(roots, p, maxBytes);
       res.json({ ok: true, ...r });
