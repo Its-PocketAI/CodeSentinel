@@ -1461,6 +1461,8 @@ export function App() {
   const activeToolId = modeToToolId(termMode);
   const agentMobileQuickKeys = useMemo(() => AGENT_MOBILE_QUICK_KEYS[termMode] ?? [], [termMode]);
   const mobileKeyboardLabel = mobileKeyboardOpen ? t("关闭键盘") : t("打开键盘");
+  const askImageButtonLabel = isImageUploading ? t("上传中…") : t("🖼️ 提问图");
+  const askImageHintLabel = t("🖼️ 提问图片");
   const activeShortcutDoc = useMemo(() => TOOL_SHORTCUT_DOCS[termMode] ?? null, [termMode]);
   const commandDirty = useMemo(() => {
     if (!commandSettings) return false;
@@ -4421,17 +4423,17 @@ export function App() {
                     </button>
                     <button
                       type="button"
-                      className="termMobileKeyBtn"
-                      data-keyhint={t("🖼️ 提问图片")}
+                      className="termMobileKeyBtn termMobileKeyBtnImage"
+                      data-keyhint={askImageHintLabel}
                       disabled={!(activeRoot || terminalCwd) || isImageUploading}
                       onPointerDown={(e) => {
                         e.preventDefault();
                         handleImageUploadClick();
                       }}
-                      title={t("🖼️ 提问图片")}
-                      aria-label={t("🖼️ 提问图片")}
+                      title={askImageHintLabel}
+                      aria-label={askImageHintLabel}
                     >
-                      {isImageUploading ? t("上传中…") : t("🖼️ 提问图片")}
+                      {askImageButtonLabel}
                     </button>
                   </div>
                   <div className="termMobileKeysRow">
@@ -4937,17 +4939,17 @@ export function App() {
                     </button>
                     <button
                       type="button"
-                      className="termMobileKeyBtn"
-                      data-keyhint={t("🖼️ 提问图片")}
+                      className="termMobileKeyBtn termMobileKeyBtnImage"
+                      data-keyhint={askImageHintLabel}
                       disabled={!(activeRoot || terminalCwd) || isImageUploading}
                       onPointerDown={(e) => {
                         e.preventDefault();
                         handleImageUploadClick();
                       }}
-                      title={t("🖼️ 提问图片")}
-                      aria-label={t("🖼️ 提问图片")}
+                      title={askImageHintLabel}
+                      aria-label={askImageHintLabel}
                     >
-                      {isImageUploading ? t("上传中…") : t("🖼️ 提问图片")}
+                      {askImageButtonLabel}
                     </button>
                   </div>
                   <div className="termMobileKeysRow">

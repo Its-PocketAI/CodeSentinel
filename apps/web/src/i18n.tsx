@@ -249,6 +249,7 @@ const EN: Record<string, string> = {
   "加载失败：{msg}": "Load failed: {msg}",
   "上传到当前目录": "Upload to current folder",
   "🖼️ 提问图片": "🖼️ Ask Image",
+  "🖼️ 提问图": "🖼️ Ask",
   "上传": "Upload",
   "上传中…": "Uploading…",
   "新建文件夹": "New folder",

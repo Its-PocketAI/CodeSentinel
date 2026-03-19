@@ -504,6 +504,19 @@ input {
   scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
 }
 
+.termPanelHeaderRow .termModeSegmented::-webkit-scrollbar {
+  height: 6px;
+}
+
+.termPanelHeaderRow .termModeSegmented::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.termPanelHeaderRow .termModeSegmented::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.8);
+}
+
 .termPanelHeaderRow .termModeSegmented .segBtn {
   flex: 0 0 auto;
   white-space: nowrap;
@@ -519,11 +532,21 @@ input {
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(56, 189, 248, 0.85) rgba(15, 23, 42, 0.28);
 }
 
 .termHeaderActions::-webkit-scrollbar {
-  display: none;
+  height: 6px;
+}
+
+.termHeaderActions::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.termHeaderActions::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.8);
 }
 
 .termMobilePanelRow {
@@ -1526,6 +1549,10 @@ input {
   overflow: visible;
 }
 
+.termMobileKeyBtnImage {
+  min-width: clamp(86px, 24vw, 138px);
+}
+
 .termMobileKeyBtnActive {
   border-color: rgba(56, 189, 248, 0.9);
   background: rgba(14, 165, 233, 0.2);
@@ -1616,6 +1643,24 @@ input {
 
   .leftToggle {
     flex-wrap: wrap;
+  }
+
+  .termPanelHeader .termPanelHeaderRow {
+    flex-wrap: wrap;
+    align-items: stretch;
+    overflow: visible;
+  }
+
+  .termPanelHeader .termPanelHeaderRow .termModeSegmented {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .termPanelHeader .termPanelHeaderRow .termHeaderActions {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    padding-bottom: 3px;
   }
 
   /* 移动端 topbar：展开/折叠侧边栏按钮 */
@@ -2115,6 +2160,22 @@ input {
     font-size: 12px;
     top: 8px;
     right: 8px;
+  }
+}
+
+@media (max-width: 430px) {
+  .termMobileKeyBtn {
+    min-width: clamp(48px, 12vw, 80px);
+    font-size: calc(10px * var(--ui-font-scale));
+    padding: calc(6px * var(--ui-font-scale)) calc(8px * var(--ui-font-scale));
+  }
+
+  .termMobileKeyEnter {
+    min-width: clamp(66px, 18vw, 96px);
+  }
+
+  .termMobileKeyBtnImage {
+    min-width: clamp(76px, 20vw, 110px);
   }
 }
 
