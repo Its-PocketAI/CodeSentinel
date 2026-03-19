@@ -1165,7 +1165,7 @@ async function main() {
         const dataDir = getDataDir();
         const dbPath = path.join(dataDir, "chat_history.db");
         const stat = fs.statSync(dbPath);
-        if (stat.isFile() && stat.size > 0) {
+        if (stat.isFile()) {
           try {
             const db = await getDbModule();
             db.getDb();
