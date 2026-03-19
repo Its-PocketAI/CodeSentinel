@@ -556,6 +556,7 @@ async function main() {
     leftWidth: 320,
     topHeight: 49,
     mobileKeysVisible: false,
+    fontSize: 12,
   };
 
   const normalizeUiState = (input: unknown) => {
@@ -581,6 +582,7 @@ async function main() {
       leftWidth: pickNum(raw.leftWidth, defaultUiState.leftWidth, 200, 900),
       topHeight: pickNum(raw.topHeight, defaultUiState.topHeight, 20, 80),
       mobileKeysVisible: pickBool(raw.mobileKeysVisible, defaultUiState.mobileKeysVisible),
+      fontSize: pickNum(raw.fontSize, defaultUiState.fontSize, 10, 18),
     };
   };
 

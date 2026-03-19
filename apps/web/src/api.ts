@@ -315,6 +315,7 @@ export type UiState = {
   leftWidth: number;
   topHeight: number;
   mobileKeysVisible: boolean;
+  fontSize: number;
 };
 
 export async function apiGetUiState() {
@@ -402,10 +403,11 @@ export async function apiMkdir(path: string) {
   );
 }
 
-export async function apiUploadFile(dirPath: string, file: File) {
+export async function apiUploadFile(dirPath: string, file: File, opts?: { fileName?: string }) {
   const form = new FormData();
   form.append("file", file);
   form.append("path", dirPath);
+  if (opts?.fileName) form.append("filename", opts.fileName);
   return j<{ ok: true; path: string; size: number; mtimeMs: number }>(
     await authedFetch(`/api/upload?path=${encodeURIComponent(dirPath)}`, {
       method: "POST",

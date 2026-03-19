@@ -128,6 +128,7 @@ const EN: Record<string, string> = {
   "文件“{name}”大小为 {size}，超过 {threshold}。是否继续打开？":
     "File “{name}” is {size}, exceeding {threshold}. Open anyway?",
   "[提示] 已取消打开 {name}": "[Hint] Open cancelled: {name}",
+  "[成功] 已上传图片 {name}": "[Success] Image uploaded: {name}",
   "[成功] 已保存 {name}": "[Success] Saved {name}",
   "[错误] 写入: {msg}": "[Error] Write: {msg}",
   "[错误] 刷新: {msg}": "[Error] Refresh: {msg}",
@@ -164,6 +165,11 @@ const EN: Record<string, string> = {
 
   "工具设置": "Tool Settings",
   "启用或隐藏工具（设置会写入后端）": "Enable or hide tools (settings are stored on server)",
+  "偏好设置": "Preferences",
+  "全局字体大小": "Global font size",
+  "减小字体": "Decrease font size",
+  "增大字体": "Increase font size",
+  "恢复默认": "Reset",
   "AI 工具": "AI Tools",
   "命令行工具": "Terminal Tools",
   "命令行安全策略": "Terminal Safety Policy",
@@ -231,6 +237,7 @@ const EN: Record<string, string> = {
   "查看": "View",
   "加载失败：{msg}": "Load failed: {msg}",
   "上传到当前目录": "Upload to current folder",
+  "上传图片": "Upload image",
   "上传": "Upload",
   "上传中…": "Uploading…",
   "新建文件夹": "New folder",

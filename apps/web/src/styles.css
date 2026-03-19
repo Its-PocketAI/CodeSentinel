@@ -16,6 +16,7 @@
   --term-selection: rgba(125, 125, 125, 0.4);
   --shadow: none;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --ui-font-size: 12px;
   --radius-xs: 1px;
   --radius-sm: 2px;
   --radius-md: 3px;
@@ -52,6 +53,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: var(--ui-font-size);
   /* iOS safe area support */
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
@@ -948,6 +950,21 @@ input {
 .settingsFieldLabel {
   font-size: 12px;
   color: var(--muted);
+}
+
+.settingsFontControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settingsFontValue {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  min-width: 52px;
+  text-align: center;
 }
 
 .settingsTextarea {

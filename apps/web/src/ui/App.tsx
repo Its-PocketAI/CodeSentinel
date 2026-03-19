@@ -121,7 +121,11 @@ const DEFAULT_UI_STATE: UiState = {
   leftWidth: 320,
   topHeight: 49,
   mobileKeysVisible: false,
+  fontSize: 12,
 };
+
+const UI_FONT_MIN = 10;
+const UI_FONT_MAX = 18;
 
 const STORAGE_PREFIX = "codesentinel";
 const storageKey = (key: string) => `${STORAGE_PREFIX}:${key}`;
@@ -212,6 +216,7 @@ function normalizeUiState(input: UiState | null | undefined): UiState {
     leftWidth: pickNum(raw.leftWidth, DEFAULT_UI_STATE.leftWidth, 200, 900),
     topHeight: pickNum(raw.topHeight, DEFAULT_UI_STATE.topHeight, 20, 80),
     mobileKeysVisible: pickBool(raw.mobileKeysVisible, DEFAULT_UI_STATE.mobileKeysVisible),
+    fontSize: pickNum(raw.fontSize, DEFAULT_UI_STATE.fontSize, 10, 18),
   };
 }
 
@@ -633,9 +638,11 @@ export function App() {
   const [commandDenylistText, setCommandDenylistText] = useState("");
   const [commandTimeoutSec, setCommandTimeoutSec] = useState("900");
   const [commandMaxOutputKB, setCommandMaxOutputKB] = useState("1024");
-  type SettingsSectionKey = "tools" | "language" | "security";
+  const [uiFontSize, setUiFontSize] = useState(DEFAULT_UI_STATE.fontSize);
+  type SettingsSectionKey = "tools" | "preference" | "language" | "security";
   const [settingsOpen, setSettingsOpen] = useState<Record<SettingsSectionKey, boolean>>({
     tools: true,
+    preference: true,
     language: true,
     security: true,
   });
@@ -725,6 +732,7 @@ export function App() {
         setLeftWidth(next.leftWidth);
         setTopHeight(next.topHeight);
         setMobileKeysVisible(next.mobileKeysVisible);
+        setUiFontSize(next.fontSize);
         uiStateLoadedRef.current = true;
       })
       .catch((e: any) => {
@@ -1047,6 +1055,8 @@ export function App() {
   const deleteConfirmInputRef = useRef<HTMLInputElement | null>(null);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const [isImageUploading, setIsImageUploading] = useState(false);
   const [mobileKeysVisible, setMobileKeysVisible] = useState(false);
   const mobileKeysTouchedRef = useRef(false);
   const termMobileControlsRef = useRef<HTMLDivElement | null>(null);
@@ -1250,6 +1260,7 @@ export function App() {
       leftWidth,
       topHeight,
       mobileKeysVisible,
+      fontSize: uiFontSize,
     };
     if (uiStateSaveTimerRef.current) window.clearTimeout(uiStateSaveTimerRef.current);
     uiStateSaveTimerRef.current = window.setTimeout(() => {
@@ -1271,6 +1282,7 @@ export function App() {
     leftWidth,
     topHeight,
     mobileKeysVisible,
+    uiFontSize,
     isMobile,
   ]);
 
@@ -2217,6 +2229,63 @@ export function App() {
     [resolveExplorerDir, refreshDirectoryInTree, t],
   );
 
+  const buildImageUploadDir = useCallback((cwd: string) => {
+    const base = cwd.replace(/\/+$/, "");
+    return joinPath(joinPath(base, "codesentinel"), "uploaded_pictures");
+  }, []);
+
+  const buildImageFileName = useCallback((file: File) => {
+    const raw = (file.name || "image").trim();
+    const clean = raw.replace(/[^\w.-]+/g, "_");
+    const dot = clean.lastIndexOf(".");
+    const base = (dot > 0 ? clean.slice(0, dot) : clean) || "image";
+    const ext = dot > 0 ? clean.slice(dot + 1) : "";
+    const fallbackExt = file.type && file.type.startsWith("image/") ? file.type.split("/")[1] : "png";
+    const finalExt = (ext || fallbackExt).toLowerCase();
+    const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
+    return `${base}_${stamp}.${finalExt}`;
+  }, []);
+
+  const handleImageUploadClick = useCallback(() => {
+    if (!terminalCwd) {
+      setStatus(t("[错误] 请先选择目录"));
+      return;
+    }
+    if (isImageUploading) return;
+    const input = imageUploadInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
+  }, [terminalCwd, isImageUploading, t]);
+
+  const handleImageUploadChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files ? e.target.files[0] : null;
+      if (!file) return;
+      if (!terminalCwd) {
+        setStatus(t("[错误] 请先选择目录"));
+        return;
+      }
+      setIsImageUploading(true);
+      try {
+        const uploadDir = buildImageUploadDir(terminalCwd);
+        await apiMkdir(uploadDir);
+        const fileName = buildImageFileName(file);
+        await apiUploadFile(uploadDir, file, { fileName });
+        await refreshDirectoryInTree(uploadDir);
+        const rel = `./codesentinel/uploaded_pictures/${fileName}`;
+        sendTermInput(`@${rel} `);
+        setStatus(t("[成功] 已上传图片 {name}", { name: fileName }));
+      } catch (e: any) {
+        setStatus(t("[错误] 上传失败: {msg}", { msg: e?.message ?? String(e) }));
+      } finally {
+        setIsImageUploading(false);
+        if (imageUploadInputRef.current) imageUploadInputRef.current.value = "";
+      }
+    },
+    [terminalCwd, buildImageUploadDir, buildImageFileName, refreshDirectoryInTree, sendTermInput, t],
+  );
+
   const dropTabsUnderPath = useCallback((targetPath: string) => {
     setFileStateByPath((prev) => {
       const next = { ...prev };
@@ -2376,10 +2445,17 @@ export function App() {
     if (!term) return;
     term.options.theme = getTermTheme(isDarkMode);
     term.options.fontFamily = getMonoFontFamily();
+    term.options.fontSize = uiFontSize;
     try {
       term.refresh(0, term.rows - 1);
     } catch {}
-  }, [isDarkMode]);
+    safeFitTerm();
+  }, [isDarkMode, uiFontSize, safeFitTerm]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty("--ui-font-size", `${uiFontSize}px`);
+  }, [uiFontSize]);
 
   // Terminal init: only when a mode that shows the terminal (Codex/Claude/OpenCode/Restricted/cursor-cli).
   // In Cursor mode we don't create the terminal so xterm is never opened in a 0x0 hidden container.
@@ -2392,7 +2468,7 @@ export function App() {
 
     const term = new Terminal({
       fontFamily: getMonoFontFamily(),
-      fontSize: 12,
+      fontSize: uiFontSize,
       lineHeight: 1.2,
       letterSpacing: 0,
       allowProposedApi: true,
@@ -2927,13 +3003,15 @@ export function App() {
   const aiTools = settingsTools.filter((t) => t.id !== "command");
   const commandTools = settingsTools.filter((t) => t.id === "command");
   const commandDisabled = !commandSettings;
+  const canDecFont = uiFontSize > UI_FONT_MIN;
+  const canIncFont = uiFontSize < UI_FONT_MAX;
   const toggleSettingsSection = useCallback((key: SettingsSectionKey) => {
     settingsTouchedRef.current = true;
     setSettingsOpen((prev) => {
       const next = !prev[key];
       if (!isMobile) return { ...prev, [key]: next };
       if (!next) return { ...prev, [key]: false };
-      return { tools: false, language: false, security: false, [key]: true };
+      return { tools: false, preference: false, language: false, security: false, [key]: true };
     });
   }, [isMobile]);
 
@@ -3014,6 +3092,45 @@ export function App() {
           <span className="settingsHintText">{t("至少保留一个工具。")}</span>
           <div className="settingsFooterRight">
             {toolsSaving ? <span className="settingsHintText">{t("工具保存中…")}</span> : null}
+          </div>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection id="preference" title={t("偏好设置")}>
+        <div className="settingsGrid">
+          <div className="settingsField">
+            <span className="settingsFieldLabel">{t("全局字体大小")}</span>
+            <div className="settingsFontControls">
+              <button
+                className="btn btnSm"
+                type="button"
+                disabled={!canDecFont}
+                onClick={() => setUiFontSize((v) => Math.max(UI_FONT_MIN, v - 1))}
+                title={t("减小字体")}
+                aria-label={t("减小字体")}
+              >
+                -
+              </button>
+              <span className="settingsFontValue">{uiFontSize}px</span>
+              <button
+                className="btn btnSm"
+                type="button"
+                disabled={!canIncFont}
+                onClick={() => setUiFontSize((v) => Math.min(UI_FONT_MAX, v + 1))}
+                title={t("增大字体")}
+                aria-label={t("增大字体")}
+              >
+                +
+              </button>
+              <button
+                className="btn btnSm"
+                type="button"
+                onClick={() => setUiFontSize(DEFAULT_UI_STATE.fontSize)}
+                title={t("恢复默认")}
+              >
+                {t("恢复默认")}
+              </button>
+            </div>
           </div>
         </div>
       </SettingsSection>
@@ -3299,6 +3416,13 @@ export function App() {
         multiple
         onChange={handleUploadChange}
       />
+      <input
+        ref={imageUploadInputRef}
+        type="file"
+        accept="image/*"
+        className="fileUploadInput"
+        onChange={handleImageUploadChange}
+      />
         {/* 桌面端 */}
       <div className="app">
         <div
@@ -3315,7 +3439,7 @@ export function App() {
             <div style={{ display: "flex", alignItems: "center", width: "100%" }}>
               {/* <h2>Files</h2> */}
               {!isMobile && explorerCollapsed && (
-                <span style={{ writingMode: "vertical-rl", fontSize: 12, color: "var(--muted)" }}>{t("文件")}</span>
+                <span style={{ writingMode: "vertical-rl", fontSize: uiFontSize, color: "var(--muted)" }}>{t("文件")}</span>
               )}
               {!explorerCollapsed && (
                 <div className="row" style={{ marginLeft: "auto", gap: 8, alignItems: "center" }}>
@@ -3579,7 +3703,7 @@ export function App() {
                     theme={isDarkMode ? "vs-dark" : "vs"}
                     options={{
                       fontFamily: "var(--mono)",
-                      fontSize: 12,
+                      fontSize: uiFontSize,
                       minimap: { enabled: false },
                       wordWrap: "on",
                       scrollBeyondLastLine: false,
@@ -3801,6 +3925,32 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      disabled={!terminalCwd || isImageUploading}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        handleImageUploadClick();
+                      }}
+                      title={t("上传图片")}
+                      aria-label={t("上传图片")}
+                    >
+                      {isImageUploading ? t("上传中…") : t("上传图片")}
+                    </button>
+                    <button
+                      type="button"
+                      className="termMobileKeyBtn"
+                      disabled={!terminalCwd || isImageUploading}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        handleImageUploadClick();
+                      }}
+                      title={t("上传图片")}
+                      aria-label={t("上传图片")}
+                    >
+                      {isImageUploading ? t("上传中…") : t("上传图片")}
+                    </button>
+                    <button
+                      type="button"
+                      className="termMobileKeyBtn"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u0003");
@@ -4000,7 +4150,7 @@ export function App() {
                   theme="vs"
                   options={{
                     fontFamily: "var(--mono)",
-                    fontSize: 12,
+                    fontSize: uiFontSize,
                     minimap: { enabled: false },
                     wordWrap: "on",
                     scrollBeyondLastLine: false,

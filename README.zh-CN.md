@@ -69,6 +69,14 @@ Windows 建议：推荐使用 WSL 运行以获得更好的兼容性（PTY、CLI 
 
 - 终端上的方向键（Up/Down/Left/Right/Enter）不会自动唤起系统键盘。
 - 需要输入时请点击 ⌨️ 按钮唤起键盘。
+- 第二排提供“上传图片”按钮，会将图片上传到当前项目下的 `./codesentinel/uploaded_pictures`，
+  并在终端输入位置插入 `@./codesentinel/uploaded_pictures/<filename>`。
+
+---
+
+## 偏好设置
+
+- 设置 → 偏好设置：调整全局字体大小（+ / -），并可一键恢复默认值。
 
 ---
 
