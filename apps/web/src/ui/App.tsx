@@ -4165,6 +4165,8 @@ export function App() {
                     >
                       Esc
                     </button>
+                  </div>
+                  <div className="termMobileKeysRow">
                     <button
                       type="button"
                       className="termMobileKeyBtn"
@@ -4643,6 +4645,8 @@ export function App() {
                     >
                       Esc
                     </button>
+                  </div>
+                  <div className="termMobileKeysRow">
                     <button
                       type="button"
                       className="termMobileKeyBtn"

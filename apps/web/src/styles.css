@@ -1381,11 +1381,32 @@ input {
 .termMobileKeysRow {
   display: flex;
   gap: calc(6px * var(--ui-font-scale));
-  overflow-x: auto;
+  overflow-x: scroll;
   overflow-y: hidden;
   scrollbar-width: thin;
+  scrollbar-color: rgba(56, 189, 248, 0.85) rgba(15, 23, 42, 0.28);
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 2px;
+  scrollbar-gutter: stable both-edges;
+  padding-bottom: 3px;
+}
+
+.termMobileKeysRow::-webkit-scrollbar {
+  height: 8px;
+}
+
+.termMobileKeysRow::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.28);
+  border-radius: 999px;
+}
+
+.termMobileKeysRow::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(14, 165, 233, 0.95), rgba(37, 99, 235, 0.95));
+  border: 1px solid rgba(148, 163, 184, 0.45);
+}
+
+.termMobileKeysRow::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, rgba(56, 189, 248, 0.98), rgba(59, 130, 246, 0.98));
 }
 
 .termMobileKeyBtn {
