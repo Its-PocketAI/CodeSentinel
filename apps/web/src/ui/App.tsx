@@ -1015,14 +1015,14 @@ export function App() {
     try {
       const res = await apiFetch("/api/term/sessions?limit=80");
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Failed to load sessions");
+      if (!data.ok) throw new Error(data.error || t("加载会话失败"));
       setTermSessions(Array.isArray(data.sessions) ? data.sessions : []);
     } catch (e: any) {
       setTermSessionsError(e?.message ?? String(e));
     } finally {
       setTermSessionsLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const handleViewSession = useCallback(async (sessionId: string) => {
     setReplayOpen(true);
@@ -1092,7 +1092,7 @@ export function App() {
     try {
       const res = await apiFetch(`/api/term/sessions/${sessionId}`, { method: "DELETE" });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "Delete failed");
+      if (!data.ok) throw new Error(data.error || t("删除会话失败"));
       setTermSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
       clearSavedSession(sessionId);
     } catch (e: any) {
@@ -3223,7 +3223,7 @@ export function App() {
         }
 
         const resp = await client.open(openCwd, term.cols, term.rows, actualMode);
-        if (!resp.ok || !resp.sessionId) throw new Error(resp.error ?? "term.open failed");
+        if (!resp.ok || !resp.sessionId) throw new Error(resp.error ?? t("终端会话打开失败"));
         termSessionIdRef.current = resp.sessionId;
         termSessionModeRef.current = actualMode;
         termCwdRef.current = resp.cwd || openCwd;
