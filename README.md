@@ -1,278 +1,206 @@
-# CodeSentinel
+# CodeSentinel (DingMaXia)
 
-**Language**: English | [中文](./README.zh-CN.md)
+<p align="center">
+  <strong>Mobile-first, self-hosted AI coding cockpit for secure terminal workflows.</strong>
+</p>
 
-CodeSentinel is a local-first Web IDE for secure project operations: file tree + editor + restricted terminal, with Cursor CLI (`agent`), Codex CLI, Claude Code CLI (`claude`), OpenCode CLI (`opencode`), Gemini CLI (`gemini`), Kimi CLI (`kimi`), and Qwen Code CLI (`qwen`) integration.
+<p align="center">
+  <a href="./README.zh-CN.md">中文</a> ·
+  <a href="#install-recommended">Install</a> ·
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#developer-mode-from-source">Developer Mode</a> ·
+  <a href="#one-click-deploy-installsh--bash">One-Click Deploy</a>
+</p>
 
----
+<p align="center">
+  <img alt="Node 18+" src="https://img.shields.io/badge/Node-18%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" />
+  <img alt="pnpm 10+" src="https://img.shields.io/badge/pnpm-10%2B-F69220?style=for-the-badge&logo=pnpm&logoColor=white" />
+  <img alt="Platform Linux/macOS/WSL" src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20WSL-111827?style=for-the-badge" />
+  <img alt="License MIT" src="https://img.shields.io/badge/License-MIT-2563EB?style=for-the-badge" />
+</p>
 
-## Highlights
+CodeSentinel is a local-first Web IDE for secure project operations: file explorer, editor, and terminal sessions with multiple AI agents (Cursor CLI, Codex, Claude, OpenCode, Gemini, Kimi, Qwen).  
+It is optimized for mobile + desktop, and designed for persistent terminal workflows with strict safety controls.
 
-- Local file tree and editor, safe by default.
-- Restricted terminal modes (Restricted / Codex / Claude / OpenCode / Gemini / Kimi / Qwen / Cursor).
-- Restricted mode is strict server-side command execution (allowlist/denylist enforced, no PTY bypass).
-- Terminal sessions persist across page refresh/reconnect and auto-expire by idle TTL (default 12h).
-- Frontend/Backend separated, clear dev ports.
-- Built-in auth (password + token), rate limit, captcha, encrypted login payload.
-- Optional per-project Linux run-as user.
-- One-click production start/stop scripts.
+## Install (Recommended)
 
----
-
-## Design Principles
-
-- Local-first: no external service required for core workflows.
-- Least-privilege: terminals run in restricted mode by default.
-- Deterministic ops: explicit roots, explicit ports, explicit startup.
-- Observability: structured logs, reproducible setup.
-
----
-
-## Architecture
-
-```
-Browser (Web UI)
-   |
-   |  HTTP / WS
-   v
-CodeSentinel Server (3990)
-   |-- File ops / API / Auth
-   |-- PTY + CLI integration
-   |-- SQLite (chat / UI state)
-```
-
----
-
-## Quick Start (Dev)
+### One-line installer
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash
+```
+
+What it does:
+- Checks Node.js and pnpm.
+- Clones/updates the repository to `~/CodeSentinel` by default.
+- Installs dependencies.
+- Bootstraps `config/config.json` from `config/config.example.json` (if missing).
+- Starts production service (`./run/prod-start.sh`) by default.
+
+### Custom install directory / no auto-start
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | \
+  CODESENTINEL_DIR=/opt/data/CodeSentinal CODESENTINEL_START=0 bash
+```
+
+Available env vars:
+- `CODESENTINEL_REPO` (default: `https://github.com/Its-PocketAI/CodeSentinel.git`)
+- `CODESENTINEL_BRANCH` (default: `main`)
+- `CODESENTINEL_DIR` (default: `~/CodeSentinel`)
+- `CODESENTINEL_START` (`1` auto-start, `0` skip start)
+
+## Quick Start
+
+After install:
+
+```bash
+cd ~/CodeSentinel
+./run/prod-start.sh
+```
+
+Open:
+- Web: `http://localhost:3990/`
+- First setup: `http://localhost:3990/#/setup`
+- Health: `http://localhost:3990/healthz`
+
+Stop service:
+
+```bash
+./run/prod-stop.sh
+```
+
+## Developer Mode (From Source)
+
+```bash
+git clone https://github.com/Its-PocketAI/CodeSentinel.git
+cd CodeSentinel
 pnpm install
 pnpm dev
 ```
 
+Dev endpoints:
 - Web: `http://localhost:3989/`
-- First-time setup: `http://localhost:3989/#/setup`
+- API: `http://localhost:3990/`
 
-Windows note: WSL is recommended for best compatibility (PTY, CLI tools, and filesystem paths).
+Useful scripts:
+- `pnpm dev` full stack
+- `pnpm dev:server` server only
+- `pnpm dev:web` web + protocol
+- `pnpm dev:fresh` free occupied ports and restart dev
+- `./run/dev-start.sh` / `./run/dev-stop.sh` background dev mode
 
----
+## One-Click Deploy (`install.sh | bash`)
 
-## Windows (PowerShell)
+For a clean Linux server bootstrap:
 
-Prereqs: Node.js 18+ and pnpm in PATH.
-
-Dev (background):
-```powershell
-.\run\dev-start.ps1
-.\run\dev-stop.ps1
-```
-
-Prod:
-```powershell
-.\run\prod-start.ps1
-.\run\prod-stop.ps1
-```
-
-Notes:
-- Root paths accept `C:\\Users\\...` or `C:/Users/...`.
-- Terminal sessions run under the current Windows user.
-
-Run in background (optional):
 ```bash
-./run/dev-start.sh
-./run/dev-stop.sh
+curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | \
+  CODESENTINEL_DIR=/opt/data/CodeSentinal bash
 ```
 
-Logs:
-- `logs/dev.log`
-- `logs/server.log`
+Then use:
 
----
-
-## Mobile Usage
-
-- The on-screen terminal keys (Up/Down/Left/Right/Enter) do not auto-open the OS keyboard.
-- Tap the ⌨️ button to open the keyboard when you need to type.
-- Base keys are always preserved across all terminal agents:
-  `Up/Down/Left/Right/Enter`, `🖼️ Ask Image`, `Ctrl+C`, `Ctrl+Z`, `Esc`, `Tab`, `Shift+Enter`, `Alt+Enter`.
-- Agent-specific quick keys auto-switch when you switch terminal mode (Codex / Claude / OpenCode / Gemini / Kimi / Qwen / Cursor CLI),
-  while the base keys above remain available.
-- Long-press any mobile key to show a key-hint bubble.
-- The 🖼️ Ask Image button (second row) uploads to `./.codesentinel/uploaded_pictures` under the current project root
-  and inserts `@./.codesentinel/uploaded_pictures/<filename>` into the terminal input.
-
----
-
-## Preferences
-
-- Settings → Preferences: adjust global font size (+ / -) and reset to default.
-
----
-
-## Production (Recommended)
-
-One-click:
 ```bash
+cd /opt/data/CodeSentinal
 ./run/prod-start.sh
 ./run/prod-stop.sh
 ```
 
-Access:
-- Web: `http://<host>:3990/`
-- Health: `http://<host>:3990/healthz`
+## Architecture (Short)
 
-Logs:
-- `logs/prod.log`
-- `logs/server.log`
+```text
+Browser (Web UI)
+   |  HTTP / WS
+   v
+CodeSentinel Server (3990)
+   |-- File API / Auth / Setup
+   |-- Terminal sessions (PTY + restricted exec)
+   |-- SQLite (chat / UI state / settings)
+```
 
-Notes:
-- `prod-start` runs `pnpm build`, then starts the server in production mode.
-- Production serves the built frontend when `CODESENTINEL_SERVE_WEB=1` and `NODE_ENV=production` are set.
+## Core Capabilities
 
----
+- Local file explorer + editor with large-file open guard.
+- Multi-agent terminal modes: Restricted / Codex / Claude / OpenCode / Gemini / Kimi / Qwen / Cursor CLI.
+- Persistent terminal sessions across refresh/reconnect.
+- Session idle TTL auto cleanup (default 12h).
+- Mobile terminal controls (direction keys, Enter, Ask Image, Ctrl+C/Z, Tab, Shift+Enter, Alt+Enter).
+- Agent-specific quick keys auto-switch while base keys stay available.
+- Built-in auth: password + token, login rate limit, captcha, encrypted login payload.
+- Optional per-project Linux run-as user for terminal execution.
+
+## Security Defaults
+
+- Restricted mode executes commands with server-side allowlist/denylist policy (no PTY bypass).
+- Auth supports:
+  - `auth.tokenTtlDays`
+  - `auth.loginMaxAttempts`
+  - `auth.loginLockMinutes`
+  - captcha and encrypted login payload
+- Do not expose directly to public internet without firewall/reverse proxy.
 
 ## Configuration
 
 Bootstrap:
+
 ```bash
 cp config/config.example.json config/config.json
 ```
 
 Config precedence:
 1. `config/config.json`
-2. `config/config.local.json` (optional override)
-3. `config/roots.local.json` (roots override, or `CODESENTINEL_ROOTS_FILE`)
-4. `CODESENTINEL_ROOTS` (highest priority)
+2. `config/config.local.json`
+3. `config/roots.local.json` (or `CODESENTINEL_ROOTS_FILE`)
+4. `CODESENTINEL_ROOTS`
 
-Roots:
-```json
-["/path/to/workspace"]
+Important fields:
+- `server.port` (default `3990`)
+- `limits.termSessionIdleHours` (`1..168`, default `12`)
+- `tooling.bins.*` and `tooling.checkArgs.*`
+- `defaultProjectUser`, `projectUsers[]` (Linux run-as model)
+
+## Mobile UX Notes
+
+- D-pad keys do not auto-open system keyboard.
+- Use `⌨️` button when manual typing is needed.
+- `🖼️ Ask Image` uploads to `./.codesentinel/uploaded_pictures` and inserts:
+  `@./.codesentinel/uploaded_pictures/<filename>`.
+- Long-press key buttons to show key-hint bubbles.
+- Header `Keymap` button shows official key references by selected agent.
+
+## Windows / WSL
+
+WSL is recommended for best compatibility (PTY, terminal behavior, path handling).
+
+PowerShell scripts are included:
+
+```powershell
+.\run\dev-start.ps1
+.\run\dev-stop.ps1
+.\run\prod-start.ps1
+.\run\prod-stop.ps1
 ```
-
-Notes:
-- Format can be either `["/path/a", "/path/b"]` or `{ "roots": ["/path/a"] }`.
-- Override file path via `CODESENTINEL_ROOTS_FILE=/abs/path/to/roots.json`.
-- Or via env:
-  ```bash
-  CODESENTINEL_ROOTS='["/path/a","/path/b"]' pnpm dev
-  ```
-- If no roots are configured, CodeSentinel uses the default user’s home directory as a root.
-- Local config files are git-ignored: `config/config.json`, `config/config.local.json`, `config/roots.local.json`, `config/.setup-done`.
-
-Ports:
-- Backend: `config.server.port` or `PORT` (default 3990)
-- Frontend dev port: `VITE_PORT` (default 3989)
-- Frontend API base: `VITE_API_BASE` (LAN/proxy)
-
-Tooling detection:
-- `tooling.bins.<tool>`: override CLI binary path (e.g. `tooling.bins.opencode`).
-- `tooling.checkArgs.<tool>`: override version check args (e.g. `["--version"]`).
-
-Terminal policy:
-- `limits.termSessionIdleHours`: idle session auto-close TTL in hours (default `12`, range `1..168`).
-- UI path: `Settings -> Terminal Safety Policy -> Session idle expiry (hours)`.
-- Restricted mode commands are always validated server-side using allowlist/denylist policy.
-
----
-
-## Auth & Security
-
-Configure in `config/config.json`:
-- `auth.enabled`, `auth.username`, `auth.password`
-- `auth.tokenTtlDays` (default 3 days)
-- `auth.loginMaxAttempts` (default 5)
-- `auth.loginLockMinutes` (default 10)
-- `auth.captcha.enabled` + `auth.captcha.ttlSec`
-- `auth.encryption.enabled`
-
-Notes:
-- Token auto-refreshes on active use, expires after inactivity.
-- Do not expose this service to the public internet without auth + firewall.
-
----
-
-## Project Run-As User (Linux)
-
-Run terminals under a specific Linux user per project (root required):
-```json
-{
-  "defaultProjectUser": "codesentinel",
-  "projectUsers": [
-    { "root": "/path/to/project", "username": "codesentinel", "enabled": true }
-  ]
-}
-```
-
-Behavior:
-- Longest matching `root` wins.
-- Rule only applies when `root` is under an allowed root.
-- If the service is not root, it falls back to the current user.
-- You can override with `CODESENTINEL_DEFAULT_USER`.
-- `run/dev-start.sh` and `run/prod-start.sh` auto-create `defaultProjectUser` when running as root.
-
----
-
-## CLI Tools (Optional)
-
-Recommended tools:
-- Cursor CLI (`agent`)
-- Ripgrep (`rg`)
-- Codex CLI (`codex`)
-- Claude Code CLI (`claude`)
-- OpenCode CLI (`opencode`)
-- Gemini CLI (`gemini`)
-- Kimi CLI (`kimi`)
-- Qwen Code CLI (`qwen`)
-
-Examples:
-```bash
-curl https://cursor.com/install -fsS | bash
-agent --version
-
-npm i -g @openai/codex
-codex --version
-
-curl -fsSL https://claude.ai/install.sh | bash
-claude --version
-
-curl -fsSL https://opencode.ai/install | bash
-opencode --version
-
-npm install -g @google/gemini-cli
-gemini --version
-
-curl -LsSf https://code.kimi.com/install.sh | bash
-kimi --version
-
-curl -fsSL https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen.sh | bash
-qwen --version
-```
-
----
 
 ## Reverse Proxy (Optional)
 
-An Nginx example is provided at [nginx/codesentinel.conf](./nginx/codesentinel.conf).  
-It proxies `/api` and `/ws/term` to the backend and serves the built frontend.
+Nginx example:
+- `nginx/codesentinel.conf`
 
----
+It proxies `/api` and `/ws/term` and serves frontend assets.
 
 ## Troubleshooting
 
-- 3990 connection refused: backend not running, try `pnpm dev:server` or `./run/prod-start.sh`
-- 500 with backend up: check `logs/server.log` or `logs/prod.log`
-- Ports 3989/3990 in use: run `pnpm dev:fresh`
-- CLI not found: check PATH, use `where.exe` on Windows
-- OpenCode found locally but not in server: set `OPENCODE_BIN=/absolute/path/to/opencode` or ensure the service user’s PATH includes the bin dir
-
----
+- `3990` refused: run `./run/prod-start.sh` or `pnpm dev:server`
+- `500` with server running: check `logs/server.log` / `logs/prod.log`
+- ports occupied: `pnpm dev:fresh`
+- CLI not found in service: configure `tooling.bins.<tool>` or service PATH
+- OpenCode path issue: set `OPENCODE_BIN=/absolute/path/to/opencode`
 
 ## Acknowledgements
 
-This project is inspired by and references the open-source project:  
-https://github.com/ls2046/vibe-go
-
----
+CodeSentinel is inspired by and references:
+- https://github.com/ls2046/vibe-go
 
 ## License
 
