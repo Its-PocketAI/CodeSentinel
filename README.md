@@ -97,6 +97,7 @@ Logs:
   `Up/Down/Left/Right/Enter`, `🖼️ Ask Image`, `Ctrl+C`, `Ctrl+Z`, `Esc`, `Tab`, `Shift+Enter`, `Alt+Enter`.
 - Agent-specific quick keys auto-switch when you switch terminal mode (Codex / Claude / OpenCode / Gemini / Kimi / Qwen / Cursor CLI),
   while the base keys above remain available.
+- Long-press any mobile key to show a key-hint bubble.
 - The 🖼️ Ask Image button (second row) uploads to `./.codesentinel/uploaded_pictures` under the current project root
   and inserts `@./.codesentinel/uploaded_pictures/<filename>` into the terminal input.
 

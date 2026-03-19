@@ -1401,6 +1401,43 @@ input {
   line-height: 1.15;
   white-space: nowrap;
   user-select: none;
+  position: relative;
+  overflow: visible;
+}
+
+.termMobileKeyBtn[data-keyhint]::after {
+  content: attr(data-keyhint);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translate(-50%, 4px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 15;
+  max-width: min(72vw, 240px);
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: rgba(15, 23, 42, 0.95);
+  color: #e2e8f0;
+  font-family: var(--mono);
+  font-size: calc(10px * var(--ui-font-scale));
+  line-height: 1.2;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(2, 6, 23, 0.35);
+  transition: opacity 120ms ease 320ms, transform 120ms ease 320ms;
+}
+
+.termMobileKeyBtn[data-keyhint]:active::after,
+.termMobileKeyBtn[data-keyhint]:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.termMobileKeyBtn:disabled::after {
+  display: none;
 }
 
 .termMobileKeyBtnKeyboard {

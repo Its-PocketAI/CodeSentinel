@@ -4051,6 +4051,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn termMobileKeyBtnKeyboard"
+                      data-keyhint={t("打开键盘")}
                       title={t("打开键盘")}
                       aria-label={t("打开键盘")}
                       onPointerDown={(e) => {
@@ -4063,6 +4064,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Up"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[A");
@@ -4073,6 +4075,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Down"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[B");
@@ -4083,6 +4086,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Left"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[D");
@@ -4093,6 +4097,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Right"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[C");
@@ -4103,6 +4108,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn termMobileKeyEnter"
+                      data-keyhint="Enter"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\r");
@@ -4115,6 +4121,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint={t("🖼️ 提问图片")}
                       disabled={!(activeRoot || terminalCwd) || isImageUploading}
                       onPointerDown={(e) => {
                         e.preventDefault();
@@ -4128,6 +4135,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Ctrl+C"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u0003");
@@ -4138,6 +4146,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Ctrl+Z"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u001a");
@@ -4148,6 +4157,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Esc"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u001b");
@@ -4158,6 +4168,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Tab"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\t");
@@ -4168,6 +4179,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Shift+Enter"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\r");
@@ -4178,6 +4190,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Alt+Enter"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u001b\r");
@@ -4193,6 +4206,7 @@ export function App() {
                           key={`agent-key-top-${key.id}`}
                           type="button"
                           className="termMobileKeyBtn"
+                          data-keyhint={key.label}
                           onPointerDown={(e) => {
                             e.preventDefault();
                             sendTermInput(key.data);
@@ -4515,6 +4529,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn termMobileKeyBtnKeyboard"
+                      data-keyhint={t("打开键盘")}
                       title={t("打开键盘")}
                       aria-label={t("打开键盘")}
                       onPointerDown={(e) => {
@@ -4527,6 +4542,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Up"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[A");
@@ -4537,6 +4553,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Down"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[B");
@@ -4547,6 +4564,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Left"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[D");
@@ -4557,6 +4575,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Right"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\x1b[C");
@@ -4567,6 +4586,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn termMobileKeyEnter"
+                      data-keyhint="Enter"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\r");
@@ -4579,6 +4599,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint={t("🖼️ 提问图片")}
                       disabled={!(activeRoot || terminalCwd) || isImageUploading}
                       onPointerDown={(e) => {
                         e.preventDefault();
@@ -4592,6 +4613,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Ctrl+C"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u0003");
@@ -4602,6 +4624,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Ctrl+Z"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u001a");
@@ -4612,6 +4635,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Esc"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u001b");
@@ -4622,6 +4646,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Tab"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\t");
@@ -4632,6 +4657,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Shift+Enter"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\r");
@@ -4642,6 +4668,7 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
+                      data-keyhint="Alt+Enter"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u001b\r");
@@ -4657,6 +4684,7 @@ export function App() {
                           key={`agent-key-mobile-${key.id}`}
                           type="button"
                           className="termMobileKeyBtn"
+                          data-keyhint={key.label}
                           onPointerDown={(e) => {
                             e.preventDefault();
                             sendTermInput(key.data);
