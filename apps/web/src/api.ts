@@ -286,6 +286,7 @@ export type CommandSettings = {
   denylist: string[];
   timeoutSec: number;
   maxOutputKB: number;
+  sessionIdleHours: number;
 };
 
 export async function apiGetCommandSettings() {

@@ -646,6 +646,10 @@ async function main() {
   const rawTermLogMaxMB = Number(cfg.limits?.termLogMaxMB);
   const termLogMaxMB = Number.isFinite(rawTermLogMaxMB) ? Math.min(512, Math.max(0, Math.round(rawTermLogMaxMB))) : 8;
   const termLogMaxBytes = termLogMaxMB > 0 ? termLogMaxMB * 1024 * 1024 : 0;
+  const rawTermSessionIdleHours = Number(cfg.limits?.termSessionIdleHours);
+  const termSessionIdleHoursDefault = Number.isFinite(rawTermSessionIdleHours)
+    ? Math.min(168, Math.max(1, Math.round(rawTermSessionIdleHours)))
+    : 12;
   const rawTermScrollback = Number(cfg.limits?.termScrollback);
   const termScrollback = Number.isFinite(rawTermScrollback) ? Math.min(10000, Math.max(200, Math.round(rawTermScrollback))) : 2000;
   snapshotManager.setScrollback(termScrollback);
@@ -668,6 +672,7 @@ async function main() {
     denylist: [],
     timeoutSec,
     maxOutputKB,
+    sessionIdleHours: termSessionIdleHoursDefault,
   } as const;
 
   const sanitizeCmdList = (input: unknown) => {
@@ -700,12 +705,14 @@ async function main() {
     const denylist = sanitizeCmdList(raw.denylist);
     const timeout = clampInt(raw.timeoutSec, 1, 3600, defaultCommandSettings.timeoutSec);
     const maxOut = clampInt(raw.maxOutputKB, 1, 8192, defaultCommandSettings.maxOutputKB);
+    const sessionIdleHours = clampInt(raw.sessionIdleHours, 1, 168, defaultCommandSettings.sessionIdleHours);
     return {
       mode,
       whitelist,
       denylist,
       timeoutSec: timeout,
       maxOutputKB: maxOut,
+      sessionIdleHours,
     };
   };
 
@@ -713,11 +720,13 @@ async function main() {
     whitelist: {} as Record<string, { title?: string }>,
     denylist: [] as string[],
     limits: { timeoutSec, maxOutputBytes: maxOutputKB * 1024 },
+    sessionPolicy: { idleTtlMs: termSessionIdleHoursDefault * 3600 * 1000 },
   };
 
   const applyCommandSettings = (settings: ReturnType<typeof normalizeCommandSettings>) => {
     commandRuntime.limits.timeoutSec = settings.timeoutSec;
     commandRuntime.limits.maxOutputBytes = settings.maxOutputKB * 1024;
+    commandRuntime.sessionPolicy.idleTtlMs = settings.sessionIdleHours * 3600 * 1000;
 
     const allow = new Set(settings.mode === "allowlist" ? settings.whitelist : []);
     for (const key of Object.keys(commandRuntime.whitelist)) {
@@ -2360,6 +2369,7 @@ async function main() {
     denylist: commandRuntime.denylist,
     maxSessions,
     limits: commandRuntime.limits,
+    sessionPolicy: commandRuntime.sessionPolicy,
     termLogMaxBytes,
     resolveRunAs,
     tooling: {

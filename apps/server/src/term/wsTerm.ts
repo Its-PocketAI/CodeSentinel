@@ -13,7 +13,6 @@ import { OpencodeCliManager } from "./opencodeCliManager.js";
 import { GeminiCliManager } from "./geminiCliManager.js";
 import { KimiCliManager } from "./kimiCliManager.js";
 import { QwenCliManager } from "./qwenCliManager.js";
-import { PtyRestrictedManager } from "./ptyRestrictedManager.js";
 import type { RunAsUser } from "../userRunAs.js";
 
 type ActiveSessionMeta = { sessionId: string; cwd: string; mode: string };
@@ -63,6 +62,7 @@ export function attachTermWs(opts: {
   termLogMaxBytes?: number;
   resolveRunAs?: (cwd: string) => RunAsUser | null;
   tooling?: { bins?: { opencode?: string; gemini?: string; kimi?: string; qwen?: string } };
+  sessionPolicy?: { idleTtlMs?: number; sweepIntervalMs?: number };
   validateCwd: (cwd: string) => Promise<string>;
   authorize?: (req: http.IncomingMessage) => Promise<{ ok: true } | { ok: false; error?: string }>;
 }) {
@@ -71,6 +71,7 @@ export function attachTermWs(opts: {
   const sessionSubs = new Map<string, Set<WebSocket>>();
   const sessionMeta = new Map<string, { cwd: string; mode: string }>();
   const sessionOwners = new Map<string, { manager: any; mode: string }>();
+  const sessionActiveAt = new Map<string, number>();
 
   const send = (ws: WebSocket, msg: TermServerMsg) => {
     if (ws.readyState !== ws.OPEN) return;
@@ -85,11 +86,20 @@ export function attachTermWs(opts: {
     sessionSubs.delete(sessionId);
     sessionOwners.delete(sessionId);
     sessionMeta.delete(sessionId);
+    sessionActiveAt.delete(sessionId);
+  };
+
+  const touchSession = (sessionId: string) => {
+    if (!sessionMeta.has(sessionId)) return;
+    sessionActiveAt.set(sessionId, Date.now());
   };
 
   const broadcast = (msg: TermServerMsg) => {
     if ((msg as any)?.sessionId) {
       const sessionId = (msg as any).sessionId as string;
+      if (msg.t === "term.data") {
+        touchSession(sessionId);
+      }
       const subs = sessionSubs.get(sessionId);
       if (subs && subs.size > 0) {
         for (const ws of subs) send(ws, msg);
@@ -107,6 +117,7 @@ export function attachTermWs(opts: {
     const set = sessionSubs.get(sessionId) ?? new Set<WebSocket>();
     set.add(ws);
     sessionSubs.set(sessionId, set);
+    touchSession(sessionId);
   };
 
   const detachWs = (ws: WebSocket) => {
@@ -119,6 +130,7 @@ export function attachTermWs(opts: {
   const registerSession = (sessionId: string, cwd: string, mode: string, manager: any, ws?: WebSocket) => {
     sessionOwners.set(sessionId, { manager, mode });
     sessionMeta.set(sessionId, { cwd, mode });
+    sessionActiveAt.set(sessionId, Date.now());
     if (ws) attachSession(ws, sessionId);
   };
 
@@ -149,12 +161,6 @@ export function attachTermWs(opts: {
     send: (m) => broadcast(m as TermServerMsg),
   });
   const codexPtyMgr = new PtyCodexManager({
-    maxSessions: opts.maxSessions,
-    validateCwd: opts.validateCwd,
-    send: (m) => broadcast(m as TermServerMsg),
-    termLogMaxBytes: opts.termLogMaxBytes,
-  });
-  const restrictedPtyMgr = new PtyRestrictedManager({
     maxSessions: opts.maxSessions,
     validateCwd: opts.validateCwd,
     send: (m) => broadcast(m as TermServerMsg),
@@ -199,6 +205,35 @@ export function attachTermWs(opts: {
     send: (m) => broadcast(m as TermServerMsg),
     termLogMaxBytes: opts.termLogMaxBytes,
     binOverride: opts.tooling?.bins?.qwen,
+  });
+
+  const sweepIntervalMs = Math.max(15000, Math.min(Number(opts.sessionPolicy?.sweepIntervalMs ?? 60000) || 60000, 600000));
+  const sweepTimer = setInterval(() => {
+    const idleTtlMs = Number(opts.sessionPolicy?.idleTtlMs ?? 0);
+    if (!Number.isFinite(idleTtlMs) || idleTtlMs <= 0) return;
+    const now = Date.now();
+    for (const [sessionId] of sessionMeta.entries()) {
+      const lastAt = sessionActiveAt.get(sessionId) ?? now;
+      if (now - lastAt < idleTtlMs) continue;
+      const owner = sessionOwners.get(sessionId);
+      const subs = sessionSubs.get(sessionId);
+      if (subs && subs.size > 0) {
+        const ttlHours = Math.max(0.1, Math.round((idleTtlMs / 3600000) * 10) / 10);
+        for (const sock of subs) {
+          send(sock, { t: "term.data", sessionId, data: `\r\n[session] closed after ${ttlHours}h idle timeout\r\n` });
+        }
+      }
+      try {
+        owner?.manager?.close?.(sessionId);
+      } catch {}
+      cleanupSession(sessionId);
+    }
+  }, sweepIntervalMs);
+  if (typeof (sweepTimer as any).unref === "function") {
+    (sweepTimer as any).unref();
+  }
+  wss.on("close", () => {
+    clearInterval(sweepTimer);
   });
 
   wss.on("connection", async (ws, req) => {
@@ -257,30 +292,17 @@ export function attachTermWs(opts: {
           const realCwd = await opts.validateCwd(cwd);
           const runAs = opts.resolveRunAs ? opts.resolveRunAs(realCwd) : null;
           if (mode === "restricted") {
-            try {
-              const s = await restrictedPtyMgr.open(realCwd, cols, rows, runAs);
-              registerSession(s.id, s.cwd, "restricted-pty", restrictedPtyMgr, ws);
-              send(ws, {
-                t: "term.open.resp",
-                reqId,
-                ok: true,
-                sessionId: s.id,
-                cwd: s.cwd,
-                mode: "restricted-pty",
-              });
-            } catch (e: any) {
-              const s = term.open(realCwd, cols, rows, runAs);
-              registerSession(s.id, s.cwd, "restricted-exec", term, ws);
-              send(ws, {
-                t: "term.open.resp",
-                reqId,
-                ok: true,
-                sessionId: s.id,
-                cwd: s.cwd,
-                mode: "restricted-exec",
-              });
-              send(ws, { t: "term.data", sessionId: s.id, data: `$ cd ${s.cwd}\r\n` });
-            }
+            const s = term.open(realCwd, cols, rows, runAs);
+            registerSession(s.id, s.cwd, "restricted-exec", term, ws);
+            send(ws, {
+              t: "term.open.resp",
+              reqId,
+              ok: true,
+              sessionId: s.id,
+              cwd: s.cwd,
+              mode: "restricted-exec",
+            });
+            send(ws, { t: "term.data", sessionId: s.id, data: `$ cd ${s.cwd}\r\n$ ` });
           } else if (mode === "native") {
             const s = nativeMgr.open(realCwd, cols, rows, runAs);
             registerSession(s.id, s.cwd, "native", nativeMgr, ws);
@@ -362,6 +384,7 @@ export function attachTermWs(opts: {
           const meta = sessionMeta.get(sessionId);
           if (!meta) return fail("term.attach", "Session not found");
           attachSession(ws, sessionId);
+          touchSession(sessionId);
           send(ws, { t: "term.attach.resp", reqId, ok: true, sessionId, cwd: meta.cwd, mode: meta.mode });
           return;
         }
@@ -389,6 +412,7 @@ export function attachTermWs(opts: {
           if (!Number.isFinite(cols) || !Number.isFinite(rows)) return fail("term.resize", "Invalid cols/rows");
           const owner = sessionOwners.get(sessionId);
           if (!owner) return fail("term.resize", "Unknown session");
+          touchSession(sessionId);
           owner.manager.resize(sessionId, cols, rows);
           send(ws, { t: "term.resize.resp", reqId, ok: true });
           return;
@@ -402,6 +426,7 @@ export function attachTermWs(opts: {
           send(ws, { t: "term.stdin.resp", reqId, ok: true });
           const owner = sessionOwners.get(sessionId);
           if (!owner) return;
+          touchSession(sessionId);
           const mgr = owner.manager;
           Promise.resolve()
             .then(() => mgr.stdin(sessionId, dataStr))

@@ -70,6 +70,7 @@
     "maxOutputKB": 1024,
     "maxSessions": 4,
     "termLogMaxMB": 8,
-    "termScrollback": 2000
+    "termScrollback": 2000,
+    "termSessionIdleHours": 12
   }
 }

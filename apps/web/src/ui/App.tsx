@@ -669,6 +669,7 @@ export function App() {
   const [commandDenylistText, setCommandDenylistText] = useState("");
   const [commandTimeoutSec, setCommandTimeoutSec] = useState("900");
   const [commandMaxOutputKB, setCommandMaxOutputKB] = useState("1024");
+  const [commandSessionIdleHours, setCommandSessionIdleHours] = useState("12");
   const [uiFontSize, setUiFontSize] = useState(DEFAULT_UI_STATE.fontSize);
   type SettingsSectionKey = "tools" | "preference" | "language" | "security";
   const [settingsOpen, setSettingsOpen] = useState<Record<SettingsSectionKey, boolean>>({
@@ -735,6 +736,7 @@ export function App() {
         setCommandDenylistText(listToText(s.denylist));
         setCommandTimeoutSec(String(s.timeoutSec));
         setCommandMaxOutputKB(String(s.maxOutputKB));
+        setCommandSessionIdleHours(String(s.sessionIdleHours ?? 12));
       })
       .catch((e: any) => {
         if (cancelled) return;
@@ -830,6 +832,7 @@ export function App() {
         denylist: parseCommandList(commandDenylistText),
         timeoutSec: Math.max(1, Number(commandTimeoutSec) || 1),
         maxOutputKB: Math.max(1, Number(commandMaxOutputKB) || 1),
+        sessionIdleHours: Math.max(1, Math.min(168, Number(commandSessionIdleHours) || 12)),
       };
       const res = await apiSetCommandSettings(settings);
       setCommandSettings(res.settings);
@@ -838,6 +841,7 @@ export function App() {
       setCommandDenylistText(listToText(res.settings.denylist));
       setCommandTimeoutSec(String(res.settings.timeoutSec));
       setCommandMaxOutputKB(String(res.settings.maxOutputKB));
+      setCommandSessionIdleHours(String(res.settings.sessionIdleHours));
       setStatus(t("[成功] 命令行设置已保存"));
     } catch (e: any) {
       setStatus(t("[错误] 命令行设置: {msg}", { msg: e?.message ?? String(e) }));
@@ -850,6 +854,7 @@ export function App() {
     commandDenylistText,
     commandTimeoutSec,
     commandMaxOutputKB,
+    commandSessionIdleHours,
     t,
   ]);
 
@@ -1066,6 +1071,8 @@ export function App() {
   const termCwdRef = useRef<string>("");
   const lastOpenKeyRef = useRef<string>("");
   const cursorPromptNudgedRef = useRef(false);
+  const termRestoreLockSessionRef = useRef<string>("");
+  const termRestoreLockActiveRef = useRef(false);
   const termInitedRef = useRef(false);
 
   const logTerm = (..._args: any[]) => {};
@@ -1152,6 +1159,8 @@ export function App() {
     termSessionIsPtyRef.current = false;
     termPendingStdinRef.current = "";
     termPendingDataBufferRef.current.clear();
+    termRestoreLockActiveRef.current = false;
+    termRestoreLockSessionRef.current = "";
     if (nextMode && nextMode !== "cursor") {
       showNoSessionHint(nextMode);
     }
@@ -1298,7 +1307,8 @@ export function App() {
       JSON.stringify(whitelist) !== JSON.stringify(commandSettings.whitelist) ||
       JSON.stringify(denylist) !== JSON.stringify(commandSettings.denylist) ||
       toNum(commandTimeoutSec, commandSettings.timeoutSec) !== commandSettings.timeoutSec ||
-      toNum(commandMaxOutputKB, commandSettings.maxOutputKB) !== commandSettings.maxOutputKB
+      toNum(commandMaxOutputKB, commandSettings.maxOutputKB) !== commandSettings.maxOutputKB ||
+      toNum(commandSessionIdleHours, commandSettings.sessionIdleHours) !== commandSettings.sessionIdleHours
     );
   }, [
     commandSettings,
@@ -1307,6 +1317,7 @@ export function App() {
     commandDenylistText,
     commandTimeoutSec,
     commandMaxOutputKB,
+    commandSessionIdleHours,
   ]);
 
   useEffect(() => {
@@ -2663,6 +2674,9 @@ export function App() {
       if (m.t === "term.data") {
         const sid = m.sessionId;
         if (sid === termSessionIdRef.current) {
+          if (termRestoreLockActiveRef.current && termRestoreLockSessionRef.current === sid) {
+            return;
+          }
           term.write(m.data);
           logTerm("term.data", { sessionId: sid, bytes: m.data.length, head: m.data.slice(0, 24) });
           // Cursor Agent TUI sometimes only renders after resize. Nudge with resize only (Enter + resize
@@ -2679,7 +2693,16 @@ export function App() {
           }
         } else {
           // Buffer for Codex/Claude/OpenCode/Cursor CLI in case output arrives before open.resp.
-          if (termModeRef.current === "codex" || termModeRef.current === "claude" || termModeRef.current === "opencode" || termModeRef.current === "gemini" || termModeRef.current === "kimi" || termModeRef.current === "qwen" || termModeRef.current === "cursor-cli") {
+          if (
+            pendingOpenRef.current &&
+            (termModeRef.current === "codex" ||
+              termModeRef.current === "claude" ||
+              termModeRef.current === "opencode" ||
+              termModeRef.current === "gemini" ||
+              termModeRef.current === "kimi" ||
+              termModeRef.current === "qwen" ||
+              termModeRef.current === "cursor-cli")
+          ) {
             if (!termPendingDataBufferRef.current.has(sid)) termPendingDataBufferRef.current.set(sid, []);
             termPendingDataBufferRef.current.get(sid)!.push(m.data);
           }
@@ -2687,6 +2710,10 @@ export function App() {
       }
       if (m.t === "term.exit" && m.sessionId === termSessionIdRef.current) {
         const sessionMode = termSessionModeRef.current;
+        if (termRestoreLockSessionRef.current === m.sessionId) {
+          termRestoreLockActiveRef.current = false;
+          termRestoreLockSessionRef.current = "";
+        }
         logTerm("term.exit", { sessionId: m.sessionId, code: m.code, termMode: sessionMode || termModeRef.current });
         // For PTY-based modes (codex, cursor, cursor-cli), term.exit means the whole session ended.
         // For restricted mode, term.exit only means a single command finished — keep the session open.
@@ -2853,6 +2880,8 @@ export function App() {
       termSessionIdRef.current = "";
       termInitedRef.current = false;
       termSessionIsPtyRef.current = false;
+      termRestoreLockActiveRef.current = false;
+      termRestoreLockSessionRef.current = "";
     };
   }, []);
 
@@ -2908,9 +2937,13 @@ export function App() {
         saveSessionForMode(mapped.uiMode, { sessionId: resp.sessionId, cwd: sessionCwd, mode: sessionMode || mapped.sessionMode });
 
         ensureTermAttached();
+        termPendingDataBufferRef.current.delete(resp.sessionId);
+        termRestoreLockSessionRef.current = resp.sessionId;
+        termRestoreLockActiveRef.current = true;
         term.reset();
         fitAndResize();
         try {
+          await client.resize(resp.sessionId, term.cols, term.rows).catch(() => {});
           const snap = await apiFetch(`/api/term/snapshot/${resp.sessionId}?tailBytes=20000`);
           if (snap.ok) {
             const payload = await snap.json();
@@ -2918,7 +2951,12 @@ export function App() {
               term.write(payload.data);
             }
           }
-        } catch {}
+        } catch {} finally {
+          if (termRestoreLockSessionRef.current === resp.sessionId) {
+            termRestoreLockActiveRef.current = false;
+            termRestoreLockSessionRef.current = "";
+          }
+        }
         fitAndResize();
         setTimeout(fitAndResize, 200);
         setStatus(t("[已恢复] {msg}", { msg: sessionCwd || resp.sessionId }));
@@ -2962,6 +3000,8 @@ export function App() {
           termSessionIdRef.current = "";
           termSessionModeRef.current = "";
           termSessionIsPtyRef.current = false;
+          termRestoreLockActiveRef.current = false;
+          termRestoreLockSessionRef.current = "";
           lastOpenKeyRef.current = "";
         }
 
@@ -3010,8 +3050,7 @@ export function App() {
           actualMode === "qwen" ||
           actualMode === "cursor-cli-agent" ||
           actualMode === "cursor-cli-plan" ||
-          actualMode === "cursor-cli-ask" ||
-          (actualMode === "restricted" && resp.mode === "restricted-pty");
+          actualMode === "cursor-cli-ask";
         termSessionIsPtyRef.current = isPtySession;
         lastOpenKeyRef.current = buildOpenKey(openCwd, termModeRef.current, cursorCliModeRef.current);
         cursorPromptNudgedRef.current = false;
@@ -3049,34 +3088,6 @@ export function App() {
         logTerm("resize after open", { sessionId: resp.sessionId, cols: term.cols, rows: term.rows });
         fitAndResize();
         setTimeout(fitAndResize, 200);
-
-        if (isPtySession) {
-          try {
-            const snap = await apiFetch(`/api/term/snapshot/${resp.sessionId}?tailBytes=20000`);
-            if (snap.ok) {
-              const payload = await snap.json();
-              if (payload?.data && term.buffer.active.length === 0) {
-                term.write(payload.data);
-              } else if (!payload?.data) {
-                const replay = await apiFetch(`/api/term/replay/${resp.sessionId}?tailBytes=20000`);
-                if (replay.ok) {
-                  const text = await replay.text();
-                  if (text && term.buffer.active.length === 0) {
-                    term.write(text);
-                  }
-                }
-              }
-            } else {
-              const replay = await apiFetch(`/api/term/replay/${resp.sessionId}?tailBytes=20000`);
-              if (replay.ok) {
-                const text = await replay.text();
-                if (text && term.buffer.active.length === 0) {
-                  term.write(text);
-                }
-              }
-            }
-          } catch {}
-        }
 
         // Flush any keystrokes typed while the session was opening.
         const pending = termPendingStdinRef.current;
@@ -3275,6 +3286,18 @@ export function App() {
               value={commandMaxOutputKB}
               disabled={commandDisabled}
               onChange={(e) => setCommandMaxOutputKB(e.target.value)}
+            />
+          </label>
+          <label className="settingsField">
+            <span className="settingsFieldLabel">{t("会话空闲过期（小时）")}</span>
+            <input
+              className="input"
+              type="number"
+              min={1}
+              max={168}
+              value={commandSessionIdleHours}
+              disabled={commandDisabled}
+              onChange={(e) => setCommandSessionIdleHours(e.target.value)}
             />
           </label>
         </div>

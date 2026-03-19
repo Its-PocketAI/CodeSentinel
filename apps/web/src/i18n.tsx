@@ -178,6 +178,7 @@ const EN: Record<string, string> = {
   "允许列表": "Allowlist",
   "超时（秒）": "Timeout (sec)",
   "最大输出（KB）": "Max output (KB)",
+  "会话空闲过期（小时）": "Session idle expiry (hours)",
   "允许列表（每行一个命令）": "Allowlist (one command per line)",
   "例如：ls\npwd\ngit\nnode": "e.g. ls\npwd\ngit\nnode",
   "禁止列表（每行一个命令）": "Denylist (one command per line)",

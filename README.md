@@ -10,6 +10,8 @@ CodeSentinel is a local-first Web IDE for secure project operations: file tree +
 
 - Local file tree and editor, safe by default.
 - Restricted terminal modes (Restricted / Codex / Claude / OpenCode / Gemini / Kimi / Qwen / Cursor).
+- Restricted mode is strict server-side command execution (allowlist/denylist enforced, no PTY bypass).
+- Terminal sessions persist across page refresh/reconnect and auto-expire by idle TTL (default 12h).
 - Frontend/Backend separated, clear dev ports.
 - Built-in auth (password + token), rate limit, captcha, encrypted login payload.
 - Optional per-project Linux run-as user.
@@ -160,6 +162,11 @@ Ports:
 Tooling detection:
 - `tooling.bins.<tool>`: override CLI binary path (e.g. `tooling.bins.opencode`).
 - `tooling.checkArgs.<tool>`: override version check args (e.g. `["--version"]`).
+
+Terminal policy:
+- `limits.termSessionIdleHours`: idle session auto-close TTL in hours (default `12`, range `1..168`).
+- UI path: `Settings -> Terminal Safety Policy -> Session idle expiry (hours)`.
+- Restricted mode commands are always validated server-side using allowlist/denylist policy.
 
 ---
 

@@ -43,6 +43,7 @@ export type AppConfig = {
     maxSessions?: number;
     termLogMaxMB?: number;
     termScrollback?: number;
+    termSessionIdleHours?: number;
   };
 };
 
