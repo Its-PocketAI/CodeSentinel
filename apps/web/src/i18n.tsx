@@ -163,6 +163,12 @@ const EN: Record<string, string> = {
   "已上传 {uploaded}/{total}，": "Uploaded {uploaded}/{total}, ",
 
   "工具设置": "Tool Settings",
+  "键位表": "Keymap",
+  "官方来源": "Source",
+  "打开官方文档": "Open Official Docs",
+  "快捷键": "Shortcut",
+  "说明": "Description",
+  "当前工具暂无内置键位表": "No built-in keymap for the current tool",
   "启用或隐藏工具（设置会写入后端）": "Enable or hide tools (settings are stored on server)",
   "偏好设置": "Preferences",
   "全局字体大小": "Global font size",

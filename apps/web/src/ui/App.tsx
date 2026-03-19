@@ -58,6 +58,14 @@ type TreeNode = {
 type ToolId = "cursor" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor-cli" | "command";
 type TermMode = "restricted" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor" | "cursor-cli";
 type MobileTermQuickKey = { id: string; label: string; data: string };
+type ShortcutDocItem = { key: string; action: string };
+type ShortcutDoc = {
+  title: string;
+  sourceLabel: string;
+  sourceUrl: string;
+  note?: string;
+  items: ShortcutDocItem[];
+};
 
 const TOOL_DEFS: { id: ToolId; label: string; desc: string }[] = [
   { id: "cursor", label: "Cursor Chat", desc: "对话式助手（非终端）" },
@@ -76,9 +84,12 @@ const LARGE_FILE_THRESHOLD_BYTES = 10 * 1024 * 1024;
 const LARGE_FILE_HARD_LIMIT_BYTES = 50 * 1024 * 1024;
 const AGENT_MOBILE_QUICK_KEYS: Partial<Record<TermMode, MobileTermQuickKey[]>> = {
   codex: [
+    { id: "shift-left", label: "Shift+←", data: "\u001b[1;2D" },
+    { id: "alt-up", label: "Alt+↑", data: "\u001b[1;3A" },
+    { id: "shift-tab", label: "Shift+Tab", data: "\u001b[Z" },
+    { id: "ctrl-t", label: "Ctrl+T", data: "\u0014" },
+    { id: "ctrl-g", label: "Ctrl+G", data: "\u0007" },
     { id: "ctrl-j", label: "Ctrl+J", data: "\n" },
-    { id: "ctrl-l", label: "Ctrl+L", data: "\u000c" },
-    { id: "ctrl-r", label: "Ctrl+R", data: "\u0012" },
   ],
   claude: [
     { id: "shift-tab", label: "Shift+Tab", data: "\u001b[Z" },
@@ -110,6 +121,108 @@ const AGENT_MOBILE_QUICK_KEYS: Partial<Record<TermMode, MobileTermQuickKey[]>> =
     { id: "ctrl-l", label: "Ctrl+L", data: "\u000c" },
     { id: "ctrl-r", label: "Ctrl+R", data: "\u0012" },
   ],
+};
+
+const TOOL_SHORTCUT_DOCS: Partial<Record<TermMode, ShortcutDoc>> = {
+  codex: {
+    title: "Codex CLI 官方键位",
+    sourceLabel: "OpenAI Codex 官方文档/源码",
+    sourceUrl: "https://github.com/openai/codex",
+    note: "完整键位以官方链接最新版本为准；本表整理自官方 TUI 文档与源码中的快捷键定义。",
+    items: [
+      { key: "/", action: "打开命令列表（commands）" },
+      { key: "!", action: "Shell 命令输入" },
+      { key: "Shift+Enter / Ctrl+J", action: "插入换行" },
+      { key: "Tab", action: "队列发送消息（queue message）" },
+      { key: "@", action: "文件路径补全" },
+      { key: "Ctrl+V / Ctrl+Alt+V(WSL)", action: "粘贴图片到输入区" },
+      { key: "Ctrl+G", action: "在外部编辑器编辑输入" },
+      { key: "Esc Esc", action: "编辑上一条消息" },
+      { key: "Ctrl+T", action: "查看 transcript / 任务列表" },
+      { key: "Shift+Tab", action: "切换协作模式（启用时）" },
+      { key: "Alt+Up", action: "编辑最近排队消息（默认终端）" },
+      { key: "Shift+←", action: "编辑最近排队消息（Apple Terminal/Warp/VSCode 回退）" },
+      { key: "Alt+← / Alt+→", action: "切换上一个/下一个 Agent（多 Agent 时）" },
+      { key: "Ctrl+C", action: "中断任务；双击可退出" },
+      { key: "Ctrl+D", action: "输入为空时退出（双击确认）" },
+    ],
+  },
+  claude: {
+    title: "Claude Code 官方键位",
+    sourceLabel: "Claude Code Interactive Mode",
+    sourceUrl: "https://code.claude.com/docs/en/interactive-mode",
+    note: "完整键位请以官方链接页面为准。",
+    items: [
+      { key: "Ctrl+R", action: "历史反向搜索" },
+      { key: "Ctrl+B", action: "后台执行 Bash 任务" },
+      { key: "!", action: "进入 Bash 模式" },
+      { key: "Tab", action: "自动补全/接受建议" },
+      { key: "Esc / Backspace / Ctrl+U", action: "退出 Bash 前缀输入（空输入时）" },
+      { key: "Ctrl+T", action: "切换任务列表视图" },
+    ],
+  },
+  gemini: {
+    title: "Gemini CLI 官方键位",
+    sourceLabel: "Gemini CLI Keyboard Shortcuts",
+    sourceUrl: "https://google-gemini.github.io/gemini-cli/docs/cli/keyboard-shortcuts.html",
+    note: "完整键位请以官方链接页面为准。",
+    items: [
+      { key: "Esc", action: "关闭对话框/建议" },
+      { key: "Ctrl+C", action: "取消请求并清空输入；双击退出" },
+      { key: "Ctrl+D", action: "空输入时退出（双击确认）" },
+      { key: "Ctrl+L", action: "清屏" },
+      { key: "Ctrl+O", action: "切换调试控制台" },
+      { key: "Ctrl+T", action: "切换工具说明显示" },
+      { key: "Ctrl+Y", action: "切换自动审批（YOLO）" },
+      { key: "Tab", action: "接受自动补全" },
+      { key: "Ctrl+X / Meta+Enter", action: "在外部编辑器编辑输入" },
+      { key: "Ctrl+V", action: "粘贴文本/图片（图片会插入引用）" },
+    ],
+  },
+  kimi: {
+    title: "Kimi CLI 官方键位",
+    sourceLabel: "Kimi CLI 交互与输入",
+    sourceUrl: "https://www.kimi.com/code/docs/kimi-cli/guides/interaction.html",
+    note: "完整键位请以官方链接页面为准。",
+    items: [
+      { key: "Ctrl+X", action: "切换 Agent / Shell 模式" },
+      { key: "Ctrl+J / Alt+Enter", action: "插入换行" },
+      { key: "Enter", action: "发送消息" },
+      { key: "Ctrl+V", action: "粘贴文本/图片附件" },
+      { key: "@ + Tab/Enter", action: "路径补全并引用文件" },
+      { key: "↑/↓ + Enter/Space/Esc", action: "结构化问题导航与确认/跳过" },
+    ],
+  },
+  qwen: {
+    title: "Qwen Code 官方键位",
+    sourceLabel: "Qwen Code 键盘快捷键",
+    sourceUrl: "https://qwenlm.github.io/qwen-code-docs/zh/users/reference/keyboard-shortcuts/",
+    note: "完整键位请以官方链接页面为准。",
+    items: [
+      { key: "Esc", action: "关闭弹窗/建议" },
+      { key: "Ctrl+C", action: "取消请求并清空输入；双击退出" },
+      { key: "Ctrl+D", action: "空输入时退出（双击确认）" },
+      { key: "Ctrl+R", action: "反向搜索历史" },
+      { key: "Tab / Enter", action: "接受建议" },
+      { key: "Ctrl+X / Meta+Enter", action: "在外部编辑器打开输入" },
+      { key: "Ctrl+V (Windows: Alt+V)", action: "粘贴文本/图片并插入引用" },
+    ],
+  },
+  opencode: {
+    title: "OpenCode 官方键位",
+    sourceLabel: "OpenCode Keybinds",
+    sourceUrl: "https://opencode.ai/docs/keybinds/",
+    note: "完整键位请以官方链接页面和 tui.json 默认键位为准。",
+    items: [
+      { key: "Leader(默认 Ctrl+X)", action: "大多数快捷键前缀" },
+      { key: "Ctrl+C / Ctrl+D / <leader>q", action: "退出应用" },
+      { key: "Shift+Enter / Ctrl+Enter / Alt+Enter / Ctrl+J", action: "插入换行" },
+      { key: "Ctrl+P", action: "命令列表" },
+      { key: "Tab / Shift+Tab", action: "Agent 循环切换" },
+      { key: "Ctrl+V", action: "粘贴输入" },
+      { key: "Ctrl+Z", action: "终端挂起" },
+    ],
+  },
 };
 
 function isToolId(id: string): id is ToolId {
@@ -1129,6 +1242,7 @@ export function App() {
   const [deleteTarget, setDeleteTarget] = useState<TreeNode | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const deleteConfirmInputRef = useRef<HTMLInputElement | null>(null);
+  const [shortcutModalOpen, setShortcutModalOpen] = useState(false);
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -1333,6 +1447,7 @@ export function App() {
   );
   const activeToolId = modeToToolId(termMode);
   const agentMobileQuickKeys = useMemo(() => AGENT_MOBILE_QUICK_KEYS[termMode] ?? [], [termMode]);
+  const activeShortcutDoc = useMemo(() => TOOL_SHORTCUT_DOCS[termMode] ?? null, [termMode]);
   const commandDirty = useMemo(() => {
     if (!commandSettings) return false;
     const toNum = (v: string, fallback: number) => {
@@ -3971,6 +4086,14 @@ export function App() {
                       <button
                         type="button"
                         className="termPasteBtn"
+                        title={t("键位表")}
+                        onClick={() => setShortcutModalOpen(true)}
+                      >
+                        {t("键位表")}
+                      </button>
+                      <button
+                        type="button"
+                        className="termPasteBtn"
                         title={t("粘贴到终端")}
                         onClick={() => {
                           const sid = termSessionIdRef.current;
@@ -4443,6 +4566,14 @@ export function App() {
                     <button
                       type="button"
                       className="termPasteBtn"
+                      title={t("键位表")}
+                      onClick={() => setShortcutModalOpen(true)}
+                    >
+                      {t("键位表")}
+                    </button>
+                    <button
+                      type="button"
+                      className="termPasteBtn"
                       title={t("粘贴到终端")}
                       onClick={() => {
                         const sid = termSessionIdRef.current;
@@ -4778,6 +4909,71 @@ export function App() {
             </div>
           </div>
         </>
+      ) : null}
+
+      {shortcutModalOpen ? (
+        <div
+          className="pasteModalOverlay"
+          onClick={() => setShortcutModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="shortcutModalTitle"
+        >
+          <div
+            className="shortcutModalBox"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="shortcutModalTitle" className="pasteModalTitle">
+              {t("键位表")} · {t(getToolDef(activeToolId).label)}
+            </h3>
+            {activeShortcutDoc ? (
+              <>
+                <div className="shortcutModalMeta">
+                  <span>
+                    {t("官方来源")}: {activeShortcutDoc.sourceLabel}
+                  </span>
+                  <a href={activeShortcutDoc.sourceUrl} target="_blank" rel="noreferrer" className="btn">
+                    {t("打开官方文档")}
+                  </a>
+                </div>
+                {activeShortcutDoc.note ? (
+                  <div className="settingsHintText" style={{ marginBottom: 8 }}>
+                    {activeShortcutDoc.note}
+                  </div>
+                ) : null}
+                <div className="shortcutTableWrap">
+                  <table className="shortcutTable">
+                    <thead>
+                      <tr>
+                        <th>{t("快捷键")}</th>
+                        <th>{t("说明")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {activeShortcutDoc.items.map((row) => (
+                        <tr key={`${row.key}-${row.action}`}>
+                          <td>{row.key}</td>
+                          <td>{row.action}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="settingsHintText">{t("当前工具暂无内置键位表")}</div>
+            )}
+            <div className="pasteModalActions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setShortcutModalOpen(false)}
+              >
+                {t("取消")}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {pasteModalOpen ? (
