@@ -1381,17 +1381,25 @@ input {
 .termMobileKeysRow {
   display: flex;
   gap: calc(6px * var(--ui-font-scale));
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
 }
 
 .termMobileKeyBtn {
-  flex: 1;
-  padding: calc(8px * var(--ui-font-scale)) calc(10px * var(--ui-font-scale));
+  flex: 0 0 auto;
+  min-width: clamp(52px, 14vw, 92px);
+  padding: calc(7px * var(--ui-font-scale)) calc(9px * var(--ui-font-scale));
   border-radius: var(--radius-xs);
   border: 1px solid var(--border);
   background: var(--panel2);
   color: var(--text);
   font-family: var(--mono);
-  font-size: calc(12px * var(--ui-font-scale));
+  font-size: calc(11px * var(--ui-font-scale));
+  line-height: 1.15;
+  white-space: nowrap;
   user-select: none;
 }
 
@@ -1407,7 +1415,7 @@ input {
 }
 
 .termMobileKeyEnter {
-  flex: 1.4;
+  min-width: clamp(72px, 19vw, 126px);
 }
 
 @media (min-width: 901px) {
