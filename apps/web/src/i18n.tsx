@@ -111,6 +111,7 @@ const EN: Record<string, string> = {
   "安全受限命令行": "Restricted terminal",
 
   "[提示] 当前模式暂无会话，请点击“新建”": "[Hint] No session for this mode. Click “New”",
+  "[提示] 会话已失效，请点击“新建”": "[Hint] Session expired. Click “New”",
   "[提示] {tool} 暂无会话，点击“新建”创建。": "[Hint] {tool} has no session. Click “New” to create.",
   "[提示] 请先选择工作目录": "[Hint] Please select a working directory first",
   "[错误] 工具设置: {msg}": "[Error] Tool settings: {msg}",

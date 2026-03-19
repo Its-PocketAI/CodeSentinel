@@ -1335,8 +1335,10 @@ export function App() {
       } else {
         setStatus(t("[提示] 当前模式暂无会话，请点击“新建”"));
       }
-      termRef.current?.focus();
-      setTimeout(() => termRef.current?.focus(), 50);
+      if (!isMobile) {
+        termRef.current?.focus();
+        setTimeout(() => termRef.current?.focus(), 50);
+      }
     }
   }, [detachActiveSession, getSessionForMode, isMobile]);
 
@@ -2763,7 +2765,7 @@ export function App() {
         setTimeout(safeFitTerm, 50);
       });
     });
-    term.focus();
+    if (!isMobile) term.focus();
 
     termRef.current = term;
     fitRef.current = fit;
@@ -2993,7 +2995,7 @@ export function App() {
       // Intentionally do NOT dispose on tab switches; only mark disposed for connect() continuation.
       disposed = true;
     };
-  }, [safeFitTerm, terminalVisible, termMode, sendTermInput]);
+  }, [isMobile, safeFitTerm, terminalVisible, termMode, sendTermInput]);
 
   // When switching to Codex/Restricted (including Cursor→Codex again), the xterm container may have been hidden.
   // Trigger fit + backend resize; multiple delayed fits so layout and renderer are ready.
@@ -3073,7 +3075,7 @@ export function App() {
 
     if (termMode === "cursor" && !pendingAttach?.sessionId) return;
 
-    const tryAttach = async (): Promise<{ ok: true } | { ok: false; noFallback: boolean; error?: string }> => {
+    const tryAttach = async (): Promise<{ ok: true } | { ok: false; noFallback: boolean; error?: string; notFound?: boolean }> => {
       const pending = pendingAttachRef.current;
       if (!pending?.sessionId) return { ok: false, noFallback: false };
       if (pending.sessionId === termSessionIdRef.current) {
@@ -3086,10 +3088,11 @@ export function App() {
           const errMsg = resp?.error ?? "Session not found";
           const isNotFound = /not found/i.test(errMsg);
           if (isNotFound) clearSavedSession(pending.sessionId);
-          const uiMsg = isNotFound ? t("会话不存在或已结束") : errMsg;
-          setStatus(t("[错误] 会话恢复失败: {msg}", { msg: uiMsg }));
           pendingAttachRef.current = null;
-          return { ok: false, noFallback: Boolean(pending.noFallback), error: errMsg };
+          if (!isNotFound) {
+            setStatus(t("[错误] 会话恢复失败: {msg}", { msg: errMsg }));
+          }
+          return { ok: false, noFallback: Boolean(pending.noFallback), error: errMsg, notFound: isNotFound };
         }
         pendingAttachRef.current = null;
         const sessionMode = resp.mode || pending.mode || "";
@@ -3142,21 +3145,27 @@ export function App() {
         const errMsg = e?.message ?? String(e);
         const isNotFound = /not found/i.test(errMsg);
         if (isNotFound) clearSavedSession(pending.sessionId);
-        const uiMsg = isNotFound ? t("会话不存在或已结束") : errMsg;
-        setStatus(t("[错误] 会话恢复失败: {msg}", { msg: uiMsg }));
         pendingAttachRef.current = null;
-        return { ok: false, noFallback: Boolean(pending.noFallback), error: errMsg };
+        if (!isNotFound) {
+          setStatus(t("[错误] 会话恢复失败: {msg}", { msg: errMsg }));
+        }
+        return { ok: false, noFallback: Boolean(pending.noFallback), error: errMsg, notFound: isNotFound };
       }
     };
 
     (async () => {
       const attachResult = await tryAttach();
       if (attachResult.ok) return;
-      if (attachResult.noFallback) {
-        if (attachResult.error && /not found/i.test(attachResult.error)) {
-          const restored = await recoverLatestActiveSession(termModeRef.current);
-          if (restored) return;
+      if (attachResult.notFound) {
+        const restored = await recoverLatestActiveSession(termModeRef.current);
+        if (restored) return;
+        if (termModeRef.current !== "cursor") {
+          showNoSessionHint(termModeRef.current);
+          setStatus(t("[提示] 会话已失效，请点击“新建”"));
         }
+        return;
+      }
+      if (attachResult.noFallback) {
         return;
       }
       const openReq = pendingOpenRef.current;
@@ -3258,8 +3267,10 @@ export function App() {
         saveSessionForMode(uiMode, { sessionId: resp.sessionId, cwd: resp.cwd, mode: resp.mode ?? actualMode });
         // After session opens, force focus back to xterm.
         // This helps when the mode button/dropdown stole focus.
-        term.focus();
-        requestAnimationFrame(() => term.focus());
+        if (!isMobile) {
+          term.focus();
+          requestAnimationFrame(() => term.focus());
+        }
 
         // Fit + resize after open (includes delayed retries for font/layout settling)
         logTerm("resize after open", { sessionId: resp.sessionId, cols: term.cols, rows: term.rows });
@@ -3279,7 +3290,7 @@ export function App() {
           setStatus(t("[错误] 终端: {msg}", { msg: e?.message ?? String(e) }));
       }
     })();
-  }, [terminalCwd, terminalVisible, termMode, cursorMode, cursorCliMode, restoreNonce, openNonce, buildOpenKey, mapSessionMode, ensureTermAttached, saveSessionForMode, fitAndResize, recoverLatestActiveSession]);
+  }, [terminalCwd, terminalVisible, termMode, cursorMode, cursorCliMode, restoreNonce, openNonce, buildOpenKey, mapSessionMode, ensureTermAttached, saveSessionForMode, fitAndResize, recoverLatestActiveSession, isMobile, showNoSessionHint, t]);
 
   const settingsTools = toolSettings.filter((t): t is UiToolSetting & { id: ToolId } => isToolId(t.id));
   const aiTools = settingsTools.filter((t) => t.id !== "command");
@@ -4165,8 +4176,9 @@ export function App() {
                   flexDirection: "column",
                   overflow: "hidden",
                 }}
-                onMouseDown={() => termRef.current?.focus()}
-                onTouchStart={() => termRef.current?.focus()}
+                onMouseDown={() => {
+                  if (!isMobile) termRef.current?.focus();
+                }}
               />
               {isMobile && terminalVisible && termMode !== "cursor" && mobileKeysVisible ? (
                 <div className="termMobileControls" ref={termMobileControlsRef}>
@@ -4653,8 +4665,9 @@ export function App() {
                   flexDirection: "column",
                   overflow: "hidden",
                 }}
-                onMouseDown={() => termRef.current?.focus()}
-                onTouchStart={() => termRef.current?.focus()}
+                onMouseDown={() => {
+                  if (!isMobile) termRef.current?.focus();
+                }}
               />
               {isMobile && terminalVisible && termMode !== "cursor" && mobileKeysVisible ? (
                 <div className="termMobileControls" ref={termMobileControlsRef}>
