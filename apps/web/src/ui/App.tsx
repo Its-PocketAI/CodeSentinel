@@ -4063,7 +4063,7 @@ export function App() {
               ) : null}
               {!terminalCollapsed ? (
                 <div className="termPanelHeaderRow">
-                <div className="segmented" aria-label={t("终端模式")}>
+                <div className="segmented termModeSegmented" aria-label={t("终端模式")}>
                   {enabledToolIds.map((id) => {
                     const def = getToolDef(id);
                     const isActive = activeToolId === id;
@@ -4082,7 +4082,7 @@ export function App() {
                 {activeToolId === "command" ? (
                   <span className="termBadge">{t("受限命令行")}</span>
                 ) : null}
-                <div className="row" style={{ marginLeft: "auto" }}>
+                <div className="row termHeaderActions" style={{ marginLeft: "auto" }}>
                   {termMode !== "cursor" && (
                     <>
                       <button
@@ -4093,14 +4093,6 @@ export function App() {
                         onClick={handleNewSession}
                       >
                         {t("新建")}
-                      </button>
-                      <button
-                        type="button"
-                        className="termPasteBtn"
-                        title={t("键位表")}
-                        onClick={() => setShortcutModalOpen(true)}
-                      >
-                        {t("键位表")}
                       </button>
                       <button
                         type="button"
@@ -4116,6 +4108,14 @@ export function App() {
                         }}
                       >
                         {t("粘贴命令")}
+                      </button>
+                      <button
+                        type="button"
+                        className="termPasteBtn"
+                        title={t("键位表")}
+                        onClick={() => setShortcutModalOpen(true)}
+                      >
+                        {t("键位表")}
                       </button>
                     </>
                     )}
@@ -4179,9 +4179,33 @@ export function App() {
                 onMouseDown={() => {
                   if (!isMobile) termRef.current?.focus();
                 }}
+                onPointerDownCapture={(e) => {
+                  if (!isMobile) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onTouchStartCapture={(e) => {
+                  if (!isMobile) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClickCapture={(e) => {
+                  if (!isMobile) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
               />
               {isMobile && terminalVisible && termMode !== "cursor" && mobileKeysVisible ? (
-                <div className="termMobileControls" ref={termMobileControlsRef}>
+                <div
+                  className="termMobileControls"
+                  ref={termMobileControlsRef}
+                  onPointerDownCapture={(e) => {
+                    if (!isMobile) return;
+                    const target = e.target as HTMLElement | null;
+                    if (target?.closest(".termMobileKeyBtnKeyboard")) return;
+                    termRef.current?.blur();
+                  }}
+                >
                   <div className="termMobileKeysRow">
                     <button
                       type="button"
@@ -4205,7 +4229,7 @@ export function App() {
                         sendTermInput("\x1b[A");
                       }}
                     >
-                      Up
+                      ⬆️
                     </button>
                     <button
                       type="button"
@@ -4216,7 +4240,7 @@ export function App() {
                         sendTermInput("\x1b[B");
                       }}
                     >
-                      Down
+                      ⬇️
                     </button>
                     <button
                       type="button"
@@ -4227,7 +4251,7 @@ export function App() {
                         sendTermInput("\x1b[D");
                       }}
                     >
-                      Left
+                      ⬅️
                     </button>
                     <button
                       type="button"
@@ -4238,21 +4262,8 @@ export function App() {
                         sendTermInput("\x1b[C");
                       }}
                     >
-                      Right
+                      ➡️
                     </button>
-                    <button
-                      type="button"
-                      className="termMobileKeyBtn termMobileKeyEnter"
-                      data-keyhint="Enter"
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        sendTermInput("\r");
-                      }}
-                    >
-                      Enter
-                    </button>
-                  </div>
-                  <div className="termMobileKeysRow">
                     <button
                       type="button"
                       className="termMobileKeyBtn"
@@ -4266,6 +4277,19 @@ export function App() {
                       aria-label={t("🖼️ 提问图片")}
                     >
                       {isImageUploading ? t("上传中…") : t("🖼️ 提问图片")}
+                    </button>
+                  </div>
+                  <div className="termMobileKeysRow">
+                    <button
+                      type="button"
+                      className="termMobileKeyBtn termMobileKeyEnter"
+                      data-keyhint="Enter"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        sendTermInput("\r");
+                      }}
+                    >
+                      Enter
                     </button>
                     <button
                       type="button"
@@ -4545,7 +4569,7 @@ export function App() {
                 </div>
               ) : null}
               <div className="termPanelHeaderRow">
-                <div className="segmented" aria-label={t("终端模式")}>
+                <div className="segmented termModeSegmented" aria-label={t("终端模式")}>
                   {enabledToolIds.map((id) => {
                     const def = getToolDef(id);
                     const isActive = activeToolId === id;
@@ -4565,7 +4589,7 @@ export function App() {
                   <span className="termBadge">{t("受限命令行")}</span>
                 ) : null}
                 {termMode !== "cursor" && (!isMobile || mobileTerminalPanel === "terminal") && (
-                  <>
+                  <div className="termHeaderActions">
                     <button
                       type="button"
                       className="termNewBtn"
@@ -4574,14 +4598,6 @@ export function App() {
                       onClick={handleNewSession}
                     >
                       {t("新建")}
-                    </button>
-                    <button
-                      type="button"
-                      className="termPasteBtn"
-                      title={t("键位表")}
-                      onClick={() => setShortcutModalOpen(true)}
-                    >
-                      {t("键位表")}
                     </button>
                     <button
                       type="button"
@@ -4598,7 +4614,15 @@ export function App() {
                     >
                       {t("粘贴命令")}
                     </button>
-                  </>
+                    <button
+                      type="button"
+                      className="termPasteBtn"
+                      title={t("键位表")}
+                      onClick={() => setShortcutModalOpen(true)}
+                    >
+                      {t("键位表")}
+                    </button>
+                  </div>
                 )}
               </div>
               {isMobile && termMode === "cursor" && (
@@ -4668,9 +4692,33 @@ export function App() {
                 onMouseDown={() => {
                   if (!isMobile) termRef.current?.focus();
                 }}
+                onPointerDownCapture={(e) => {
+                  if (!isMobile) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onTouchStartCapture={(e) => {
+                  if (!isMobile) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClickCapture={(e) => {
+                  if (!isMobile) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
               />
               {isMobile && terminalVisible && termMode !== "cursor" && mobileKeysVisible ? (
-                <div className="termMobileControls" ref={termMobileControlsRef}>
+                <div
+                  className="termMobileControls"
+                  ref={termMobileControlsRef}
+                  onPointerDownCapture={(e) => {
+                    if (!isMobile) return;
+                    const target = e.target as HTMLElement | null;
+                    if (target?.closest(".termMobileKeyBtnKeyboard")) return;
+                    termRef.current?.blur();
+                  }}
+                >
                   <div className="termMobileKeysRow">
                     <button
                       type="button"
@@ -4694,7 +4742,7 @@ export function App() {
                         sendTermInput("\x1b[A");
                       }}
                     >
-                      Up
+                      ⬆️
                     </button>
                     <button
                       type="button"
@@ -4705,7 +4753,7 @@ export function App() {
                         sendTermInput("\x1b[B");
                       }}
                     >
-                      Down
+                      ⬇️
                     </button>
                     <button
                       type="button"
@@ -4716,7 +4764,7 @@ export function App() {
                         sendTermInput("\x1b[D");
                       }}
                     >
-                      Left
+                      ⬅️
                     </button>
                     <button
                       type="button"
@@ -4727,21 +4775,8 @@ export function App() {
                         sendTermInput("\x1b[C");
                       }}
                     >
-                      Right
+                      ➡️
                     </button>
-                    <button
-                      type="button"
-                      className="termMobileKeyBtn termMobileKeyEnter"
-                      data-keyhint="Enter"
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        sendTermInput("\r");
-                      }}
-                    >
-                      Enter
-                    </button>
-                  </div>
-                  <div className="termMobileKeysRow">
                     <button
                       type="button"
                       className="termMobileKeyBtn"
@@ -4755,6 +4790,19 @@ export function App() {
                       aria-label={t("🖼️ 提问图片")}
                     >
                       {isImageUploading ? t("上传中…") : t("🖼️ 提问图片")}
+                    </button>
+                  </div>
+                  <div className="termMobileKeysRow">
+                    <button
+                      type="button"
+                      className="termMobileKeyBtn termMobileKeyEnter"
+                      data-keyhint="Enter"
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        sendTermInput("\r");
+                      }}
+                    >
+                      Enter
                     </button>
                     <button
                       type="button"

@@ -483,12 +483,47 @@ input {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   row-gap: 6px;
+  overflow: hidden;
 }
 
 .termPanelHeaderRow .segmented {
   flex-shrink: 0;
+}
+
+.termPanelHeaderRow .termModeSegmented {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+.termPanelHeaderRow .termModeSegmented .segBtn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.termHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  max-width: 45%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.termHeaderActions::-webkit-scrollbar {
+  display: none;
 }
 
 .termMobilePanelRow {
