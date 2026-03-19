@@ -58,6 +58,13 @@ type TreeNode = {
 type ToolId = "cursor" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor-cli" | "command";
 type TermMode = "restricted" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor" | "cursor-cli";
 type MobileTermQuickKey = { id: string; label: string; data: string };
+type MobileTermTouchState = {
+  startX: number;
+  startY: number;
+  startScrollTop: number;
+  startScrollLeft: number;
+  moved: boolean;
+};
 type ShortcutDocItem = { key: string; action: string };
 type ShortcutDoc = {
   title: string;
@@ -1250,6 +1257,7 @@ export function App() {
   const [mobileKeysVisible, setMobileKeysVisible] = useState(false);
   const mobileKeysTouchedRef = useRef(false);
   const termMobileControlsRef = useRef<HTMLDivElement | null>(null);
+  const mobileTermTouchStateRef = useRef<MobileTermTouchState | null>(null);
   const lastMobileControlsHRef = useRef<number>(-1);
   const mobileSidebarToggleRef = useRef<HTMLButtonElement | null>(null);
   const chatHeaderContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1585,6 +1593,55 @@ export function App() {
       }
     });
   }, [t]);
+
+  const getTermViewport = useCallback((): HTMLElement | null => {
+    const root = termDivRef.current;
+    if (!root) return null;
+    return root.querySelector(".xterm-viewport") as HTMLElement | null;
+  }, []);
+
+  const handleTermTouchStartCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
+    const viewport = getTermViewport();
+    const touch = e.touches[0];
+    if (!viewport || !touch) return;
+    mobileTermTouchStateRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      startScrollTop: viewport.scrollTop,
+      startScrollLeft: viewport.scrollLeft,
+      moved: false,
+    };
+    e.stopPropagation();
+  }, [getTermViewport, isMobile]);
+
+  const handleTermTouchMoveCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
+    const state = mobileTermTouchStateRef.current;
+    const viewport = getTermViewport();
+    const touch = e.touches[0];
+    if (!state || !viewport || !touch) return;
+    const dx = touch.clientX - state.startX;
+    const dy = touch.clientY - state.startY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) state.moved = true;
+    // Keep scroll direction natural: content follows finger movement.
+    viewport.scrollLeft = state.startScrollLeft - dx;
+    viewport.scrollTop = state.startScrollTop - dy;
+    e.preventDefault();
+    e.stopPropagation();
+    termRef.current?.blur();
+  }, [getTermViewport, isMobile]);
+
+  const handleTermTouchEndCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
+    const state = mobileTermTouchStateRef.current;
+    mobileTermTouchStateRef.current = null;
+    if (state?.moved) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    termRef.current?.blur();
+  }, [isMobile]);
 
   const handleTermKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -4181,14 +4238,16 @@ export function App() {
                 }}
                 onPointerDownCapture={(e) => {
                   if (!isMobile) return;
-                  e.preventDefault();
+                  if (e.pointerType === "touch") {
+                    e.stopPropagation();
+                    return;
+                  }
                   e.stopPropagation();
                 }}
-                onTouchStartCapture={(e) => {
-                  if (!isMobile) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
+                onTouchStartCapture={handleTermTouchStartCapture}
+                onTouchMoveCapture={handleTermTouchMoveCapture}
+                onTouchEndCapture={handleTermTouchEndCapture}
+                onTouchCancelCapture={handleTermTouchEndCapture}
                 onClickCapture={(e) => {
                   if (!isMobile) return;
                   e.preventDefault();
@@ -4694,14 +4753,16 @@ export function App() {
                 }}
                 onPointerDownCapture={(e) => {
                   if (!isMobile) return;
-                  e.preventDefault();
+                  if (e.pointerType === "touch") {
+                    e.stopPropagation();
+                    return;
+                  }
                   e.stopPropagation();
                 }}
-                onTouchStartCapture={(e) => {
-                  if (!isMobile) return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                }}
+                onTouchStartCapture={handleTermTouchStartCapture}
+                onTouchMoveCapture={handleTermTouchMoveCapture}
+                onTouchEndCapture={handleTermTouchEndCapture}
+                onTouchCancelCapture={handleTermTouchEndCapture}
                 onClickCapture={(e) => {
                   if (!isMobile) return;
                   e.preventDefault();

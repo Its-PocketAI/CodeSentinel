@@ -1421,6 +1421,12 @@ input {
   background-color: var(--term-bg);
 }
 
+.term .xterm-viewport {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: none;
+}
+
 .termAreaWrap {
   position: relative;
   --term-kb-bottom: 0px;
