@@ -2546,12 +2546,15 @@ export function App() {
     const raw = (file.name || "image").trim();
     const clean = raw.replace(/[^\w.-]+/g, "_");
     const dot = clean.lastIndexOf(".");
-    const base = (dot > 0 ? clean.slice(0, dot) : clean) || "image";
     const ext = dot > 0 ? clean.slice(dot + 1) : "";
     const fallbackExt = file.type && file.type.startsWith("image/") ? file.type.split("/")[1] : "png";
     const finalExt = (ext || fallbackExt).toLowerCase();
-    const stamp = new Date().toISOString().replace(/[-:.TZ]/g, "");
-    return `${base}_${stamp}.${finalExt}`;
+    const now = new Date();
+    const pad = (n: number, w = 2) => n.toString().padStart(w, "0");
+    const stamp =
+      `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+      `_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}${pad(now.getMilliseconds(), 3)}`;
+    return `${stamp}.${finalExt}`;
   }, []);
 
   const handleImageUploadClick = useCallback(() => {
