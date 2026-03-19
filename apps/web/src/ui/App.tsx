@@ -3968,19 +3968,6 @@ export function App() {
                     <button
                       type="button"
                       className="termMobileKeyBtn"
-                      disabled={!terminalCwd || isImageUploading}
-                      onPointerDown={(e) => {
-                        e.preventDefault();
-                        handleImageUploadClick();
-                      }}
-                      title={t("上传图片")}
-                      aria-label={t("上传图片")}
-                    >
-                      {isImageUploading ? t("上传中…") : t("上传图片")}
-                    </button>
-                    <button
-                      type="button"
-                      className="termMobileKeyBtn"
                       onPointerDown={(e) => {
                         e.preventDefault();
                         sendTermInput("\u0003");
@@ -4375,6 +4362,19 @@ export function App() {
                     </button>
                   </div>
                   <div className="termMobileKeysRow">
+                    <button
+                      type="button"
+                      className="termMobileKeyBtn"
+                      disabled={!terminalCwd || isImageUploading}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        handleImageUploadClick();
+                      }}
+                      title={t("上传图片")}
+                      aria-label={t("上传图片")}
+                    >
+                      {isImageUploading ? t("上传中…") : t("上传图片")}
+                    </button>
                     <button
                       type="button"
                       className="termMobileKeyBtn"
