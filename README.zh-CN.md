@@ -93,6 +93,10 @@ Windows 建议：推荐使用 WSL 运行以获得更好的兼容性（PTY、CLI 
 
 - 终端上的方向键（Up/Down/Left/Right/Enter）不会自动唤起系统键盘。
 - 需要输入时请点击 ⌨️ 按钮唤起键盘。
+- 所有 Agent 终端都会保留默认键位：
+  `Up/Down/Left/Right/Enter`、`🖼️ 提问图片`、`Ctrl+C`、`Ctrl+Z`、`Esc`、`Tab`、`Shift+Enter`、`Alt+Enter`。
+- 切换终端模式（Codex / Claude / OpenCode / Gemini / Kimi / Qwen / Cursor CLI）时，会自动切换对应 Agent 的扩展快捷键；
+  以上默认键位不会被替换或隐藏。
 - 第二排提供“🖼️ 提问图片”按钮，会将图片上传到当前项目根目录下的 `./.codesentinel/uploaded_pictures`，
   并在终端输入位置插入 `@./.codesentinel/uploaded_pictures/<filename>`。
 
