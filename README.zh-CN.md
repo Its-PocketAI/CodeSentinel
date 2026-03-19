@@ -38,7 +38,8 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 - 安装依赖
 - 检查 `better-sqlite3` 原生绑定，缺失时自动重建修复
 - 自动生成 `config/config.json`（若不存在）
-- 交互确认登录 `username`、`password` 与服务 `port`
+- 在终端环境下交互确认登录 `username`、`password` 与服务 `port`（通过 `/dev/tty`，`curl | bash` 也可交互）
+- 校验端口占用：交互模式遇到占用会要求重填，非交互模式会快速报错退出
 - 终端打印并提醒你自行保存，同时写入 `config/config.json`
 - 默认启动生产服务（`./run/prod-start.sh`）
 
@@ -56,6 +57,10 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 - `CODESENTINEL_START`（`1` 自动启动，`0` 跳过）
 - `CODESENTINEL_INTERACTIVE`（`auto`/`1`/`0`，默认 `auto`）
 - `CODESENTINEL_PORT`、`CODESENTINEL_AUTH_USER`、`CODESENTINEL_AUTH_PASS`（非交互/CI 覆盖）
+
+说明：
+- `CODESENTINEL_INTERACTIVE=auto`：有 TTY 时自动交互，无 TTY（如 CI）自动走非交互。
+- `CODESENTINEL_INTERACTIVE=1`：强制交互，要求存在 `/dev/tty`；否则安装脚本会报错退出。
 
 <a id="linux-manual-install"></a>
 ## Linux 手动安装

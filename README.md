@@ -38,7 +38,8 @@ What it does:
 - Installs dependencies.
 - Verifies `better-sqlite3` native binding and auto-rebuilds when missing.
 - Bootstraps `config/config.json` from `config/config.example.json` (if missing).
-- Interactively asks and confirms login `username`, `password`, and `server port`.
+- In terminal runs, interactively asks and confirms login `username`, `password`, and `server port` (via `/dev/tty`, works with `curl | bash`).
+- Validates the selected port; if occupied, interactive mode asks again and non-interactive mode fails fast with a clear message.
 - Prints these values and reminds you to save them; values are written to `config/config.json`.
 - Starts production service (`./run/prod-start.sh`) by default.
 
@@ -56,6 +57,10 @@ Available env vars:
 - `CODESENTINEL_START` (`1` auto-start, `0` skip start)
 - `CODESENTINEL_INTERACTIVE` (`auto`/`1`/`0`, default: `auto`)
 - `CODESENTINEL_PORT`, `CODESENTINEL_AUTH_USER`, `CODESENTINEL_AUTH_PASS` (for non-interactive/CI override)
+
+Notes:
+- `CODESENTINEL_INTERACTIVE=auto` prompts when a TTY is available; in CI/non-TTY it falls back to non-interactive mode.
+- `CODESENTINEL_INTERACTIVE=1` requires `/dev/tty`; if unavailable, installer exits with an error.
 
 <a id="linux-manual-install"></a>
 ## Linux Install (Manual)

@@ -21,6 +21,11 @@ INSTALL_DIR="${CODESENTINEL_DIR:-$HOME/CodeSentinel}"
 AUTO_START="${CODESENTINEL_START:-1}"
 INTERACTIVE_MODE="${CODESENTINEL_INTERACTIVE:-auto}"
 CFG_PATH="config/config.json"
+TTY_DEV=""
+
+if [[ -r /dev/tty && -w /dev/tty ]]; then
+  TTY_DEV="/dev/tty"
+fi
 
 log() {
   printf '[CodeSentinel] %s\n' "$*"
@@ -40,11 +45,20 @@ prompt_text() {
   local label="$1"
   local def="${2:-}"
   local val=""
-  if [[ -n "$def" ]]; then
-    read -r -p "[CodeSentinel] $label [$def]: " val || true
-    val="${val:-$def}"
+  if [[ -n "$TTY_DEV" ]]; then
+    if [[ -n "$def" ]]; then
+      read -r -p "[CodeSentinel] $label [$def]: " val < "$TTY_DEV" || true
+      val="${val:-$def}"
+    else
+      read -r -p "[CodeSentinel] $label: " val < "$TTY_DEV" || true
+    fi
   else
-    read -r -p "[CodeSentinel] $label: " val || true
+    if [[ -n "$def" ]]; then
+      read -r -p "[CodeSentinel] $label [$def]: " val || true
+      val="${val:-$def}"
+    else
+      read -r -p "[CodeSentinel] $label: " val || true
+    fi
   fi
   printf '%s' "$val"
 }
@@ -53,13 +67,24 @@ prompt_secret() {
   local label="$1"
   local def="${2:-}"
   local val=""
-  if [[ -n "$def" ]]; then
-    read -r -s -p "[CodeSentinel] $label [hidden, press Enter to keep current]: " val || true
-    echo
-    val="${val:-$def}"
+  if [[ -n "$TTY_DEV" ]]; then
+    if [[ -n "$def" ]]; then
+      read -r -s -p "[CodeSentinel] $label [hidden, press Enter to keep current]: " val < "$TTY_DEV" || true
+      echo > "$TTY_DEV"
+      val="${val:-$def}"
+    else
+      read -r -s -p "[CodeSentinel] $label: " val < "$TTY_DEV" || true
+      echo > "$TTY_DEV"
+    fi
   else
-    read -r -s -p "[CodeSentinel] $label: " val || true
-    echo
+    if [[ -n "$def" ]]; then
+      read -r -s -p "[CodeSentinel] $label [hidden, press Enter to keep current]: " val || true
+      echo
+      val="${val:-$def}"
+    else
+      read -r -s -p "[CodeSentinel] $label: " val || true
+      echo
+    fi
   fi
   printf '%s' "$val"
 }
@@ -116,6 +141,11 @@ try {
 NODE
 }
 
+is_port_in_use() {
+  local p="$1"
+  node -e 'const net=require("net"); const p=Number(process.argv[1]); if(!Number.isFinite(p)||p<1||p>65535){process.exit(2)} const s=net.createServer(); s.once("error",()=>process.exit(0)); s.once("listening",()=>s.close(()=>process.exit(1))); s.listen(p,"0.0.0.0");' "$p" >/dev/null 2>&1
+}
+
 if ! check_better_sqlite3; then
   log "native binding missing for better-sqlite3, attempting auto-rebuild..."
   if command -v npm >/dev/null 2>&1; then
@@ -148,10 +178,11 @@ SET_AUTH_PASS="${CODESENTINEL_AUTH_PASS:-$DEFAULT_PASS}"
 
 SHOULD_PROMPT=0
 if [[ "$INTERACTIVE_MODE" == "1" ]]; then
+  [[ -n "$TTY_DEV" ]] || die "interactive mode requested but /dev/tty is not available"
   SHOULD_PROMPT=1
 elif [[ "$INTERACTIVE_MODE" == "0" ]]; then
   SHOULD_PROMPT=0
-elif [[ -t 0 && -t 1 ]]; then
+elif [[ -t 1 && -n "$TTY_DEV" ]]; then
   SHOULD_PROMPT=1
 fi
 
@@ -170,6 +201,10 @@ if [[ "$SHOULD_PROMPT" == "1" ]]; then
   while true; do
     SET_PORT="$(prompt_text "Service port" "$SET_PORT")"
     if [[ "$SET_PORT" =~ ^[0-9]+$ ]] && (( SET_PORT >= 1 && SET_PORT <= 65535 )); then
+      if is_port_in_use "$SET_PORT"; then
+        log "port $SET_PORT is already in use, choose another one"
+        continue
+      fi
       break
     fi
     log "port must be a number between 1 and 65535"
@@ -181,12 +216,21 @@ if [[ "$SHOULD_PROMPT" == "1" ]]; then
   printf '  password: %s\n' "$SET_AUTH_PASS"
   printf '  port: %s\n' "$SET_PORT"
   printf '  config: %s/%s\n' "$INSTALL_DIR" "$CFG_PATH"
-  read -r -p "[CodeSentinel] Confirm and write to config? [Y/n]: " CONFIRM_WRITE || true
+  if [[ -n "$TTY_DEV" ]]; then
+    read -r -p "[CodeSentinel] Confirm and write to config? [Y/n]: " CONFIRM_WRITE < "$TTY_DEV" || true
+  else
+    read -r -p "[CodeSentinel] Confirm and write to config? [Y/n]: " CONFIRM_WRITE || true
+  fi
   CONFIRM_WRITE="${CONFIRM_WRITE:-Y}"
   if [[ ! "$CONFIRM_WRITE" =~ ^[Yy]$ ]]; then
     die "installation aborted by user"
   fi
 else
+  if [[ "$SET_PORT" =~ ^[0-9]+$ ]] && (( SET_PORT >= 1 && SET_PORT <= 65535 )); then
+    if is_port_in_use "$SET_PORT"; then
+      die "port $SET_PORT is already in use; set CODESENTINEL_PORT to a free port"
+    fi
+  fi
   log "non-interactive mode: using configured/env credentials and port"
 fi
 
