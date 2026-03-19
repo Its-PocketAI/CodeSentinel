@@ -2326,7 +2326,7 @@ export function App() {
 
   const buildImageUploadDir = useCallback((projectRoot: string) => {
     const base = projectRoot.replace(/\/+$/, "");
-    return joinPath(joinPath(base, ".codesentinel"), "uplaod_pictures");
+    return joinPath(joinPath(base, ".codesentinel"), "uploaded_pictures");
   }, []);
 
   const buildImageFileName = useCallback((file: File) => {
@@ -2354,6 +2354,29 @@ export function App() {
     input.click();
   }, [activeRoot, terminalCwd, isImageUploading, t]);
 
+  const queueTermInsert = useCallback(
+    (data: string) => {
+      if (termSessionIdRef.current) {
+        sendTermInput(data);
+        return;
+      }
+      termPendingStdinRef.current += data;
+      if (pendingOpenRef.current || pendingAttachRef.current) return;
+      if (termModeRef.current === "cursor") {
+        setStatus(t("[提示] 当前模式暂无会话，请点击“新建”"));
+        return;
+      }
+      const openCwd = terminalCwd || activeRoot;
+      if (!openCwd) {
+        setStatus(t("[提示] 请先选择工作目录"));
+        return;
+      }
+      pendingOpenRef.current = { mode: termModeRef.current, cwd: openCwd };
+      setOpenNonce((n) => n + 1);
+    },
+    [activeRoot, sendTermInput, t, terminalCwd],
+  );
+
   const handleImageUploadChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files ? e.target.files[0] : null;
@@ -2370,9 +2393,9 @@ export function App() {
         const fileName = buildImageFileName(file);
         await apiUploadFile(uploadDir, file, { fileName });
         await refreshDirectoryInTree(uploadDir);
-        const rel = `./.codesentinel/uplaod_pictures/${fileName}`;
-        sendTermInput(`@${rel} `);
-        setStatus(t("[成功] 已ask image提问图片 {name}", { name: fileName }));
+        const rel = `./.codesentinel/uploaded_pictures/${fileName}`;
+        queueTermInsert(`@${rel} `);
+        setStatus(t("[成功] 已准备图片提问 {name}", { name: fileName }));
       } catch (e: any) {
         setStatus(t("[错误] 上传失败: {msg}", { msg: e?.message ?? String(e) }));
       } finally {
@@ -2380,7 +2403,7 @@ export function App() {
         if (imageUploadInputRef.current) imageUploadInputRef.current.value = "";
       }
     },
-    [activeRoot, terminalCwd, buildImageUploadDir, buildImageFileName, refreshDirectoryInTree, sendTermInput, t],
+    [activeRoot, terminalCwd, buildImageUploadDir, buildImageFileName, refreshDirectoryInTree, queueTermInsert, t],
   );
 
   const dropTabsUnderPath = useCallback((targetPath: string) => {
@@ -4058,10 +4081,10 @@ export function App() {
                         e.preventDefault();
                         handleImageUploadClick();
                       }}
-                      title={t("ask image 提问图片")}
-                      aria-label={t("ask image 提问图片")}
+                      title={t("🖼️ 提问图片")}
+                      aria-label={t("🖼️ 提问图片")}
                     >
-                      {isImageUploading ? t("上传中…") : t("ask image 提问图片")}
+                      {isImageUploading ? t("上传中…") : t("🖼️ 提问图片")}
                     </button>
                     <button
                       type="button"
@@ -4495,10 +4518,10 @@ export function App() {
                         e.preventDefault();
                         handleImageUploadClick();
                       }}
-                      title={t("ask image 提问图片")}
-                      aria-label={t("ask image 提问图片")}
+                      title={t("🖼️ 提问图片")}
+                      aria-label={t("🖼️ 提问图片")}
                     >
-                      {isImageUploading ? t("上传中…") : t("ask image 提问图片")}
+                      {isImageUploading ? t("上传中…") : t("🖼️ 提问图片")}
                     </button>
                     <button
                       type="button"

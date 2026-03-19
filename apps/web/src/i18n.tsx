@@ -128,7 +128,7 @@ const EN: Record<string, string> = {
   "文件“{name}”大小为 {size}，超过 {threshold}。是否继续打开？":
     "File “{name}” is {size}, exceeding {threshold}. Open anyway?",
   "[提示] 已取消打开 {name}": "[Hint] Open cancelled: {name}",
-  "[成功] 已ask image提问图片 {name}": "[Success] ask image prepared: {name}",
+  "[成功] 已准备图片提问 {name}": "[Success] Ask Image ready: {name}",
   "[成功] 已保存 {name}": "[Success] Saved {name}",
   "[错误] 写入: {msg}": "[Error] Write: {msg}",
   "[错误] 刷新: {msg}": "[Error] Refresh: {msg}",
@@ -237,7 +237,7 @@ const EN: Record<string, string> = {
   "查看": "View",
   "加载失败：{msg}": "Load failed: {msg}",
   "上传到当前目录": "Upload to current folder",
-  "ask image 提问图片": "ask image",
+  "🖼️ 提问图片": "🖼️ Ask Image",
   "上传": "Upload",
   "上传中…": "Uploading…",
   "新建文件夹": "New folder",
