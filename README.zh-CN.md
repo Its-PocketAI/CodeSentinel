@@ -37,6 +37,8 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 - 克隆或更新仓库到默认目录 `~/CodeSentinel`
 - 安装依赖
 - 自动生成 `config/config.json`（若不存在）
+- 交互确认登录 `username`、`password` 与服务 `port`
+- 终端打印并提醒你自行保存，同时写入 `config/config.json`
 - 默认启动生产服务（`./run/prod-start.sh`）
 
 ### 指定目录 / 不自动启动
@@ -51,6 +53,8 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 - `CODESENTINEL_BRANCH`（默认：`main`）
 - `CODESENTINEL_DIR`（默认：`~/CodeSentinel`）
 - `CODESENTINEL_START`（`1` 自动启动，`0` 跳过）
+- `CODESENTINEL_INTERACTIVE`（`auto`/`1`/`0`，默认 `auto`）
+- `CODESENTINEL_PORT`、`CODESENTINEL_AUTH_USER`、`CODESENTINEL_AUTH_PASS`（非交互/CI 覆盖）
 
 <a id="linux-manual-install"></a>
 ## Linux 手动安装

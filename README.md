@@ -37,6 +37,8 @@ What it does:
 - Clones/updates the repository to `~/CodeSentinel` by default.
 - Installs dependencies.
 - Bootstraps `config/config.json` from `config/config.example.json` (if missing).
+- Interactively asks and confirms login `username`, `password`, and `server port`.
+- Prints these values and reminds you to save them; values are written to `config/config.json`.
 - Starts production service (`./run/prod-start.sh`) by default.
 
 ### Custom install directory / no auto-start
@@ -51,6 +53,8 @@ Available env vars:
 - `CODESENTINEL_BRANCH` (default: `main`)
 - `CODESENTINEL_DIR` (default: `~/CodeSentinel`)
 - `CODESENTINEL_START` (`1` auto-start, `0` skip start)
+- `CODESENTINEL_INTERACTIVE` (`auto`/`1`/`0`, default: `auto`)
+- `CODESENTINEL_PORT`, `CODESENTINEL_AUTH_USER`, `CODESENTINEL_AUTH_PASS` (for non-interactive/CI override)
 
 <a id="linux-manual-install"></a>
 ## Linux Install (Manual)
