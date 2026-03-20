@@ -1681,8 +1681,11 @@ export function App() {
     const helper = getTermHelperTextarea();
     helper?.blur();
     termRef.current?.blur();
-    const active = document.activeElement;
-    if (active instanceof HTMLElement) {
+    const active = document.activeElement as HTMLElement | null;
+    const termWrap = termAreaWrapRef.current;
+    // Only blur focus if it belongs to the terminal area; do not steal focus
+    // from settings textareas (allowlist/denylist) on mobile.
+    if (active instanceof HTMLElement && termWrap?.contains(active)) {
       active.blur();
     }
     setMobileKeyboardOpen(false);
