@@ -2012,10 +2012,19 @@ export function App() {
 
   const handleTermKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (termModeRef.current !== "cursor-cli") return;
-      if (!termSessionIsPtyRef.current) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+
+      // Keep Tab completion usable when terminal area (not helper textarea) holds focus:
+      // prevent browser focus-jump and forward Tab into the terminal session.
+      if (e.key === "Tab" && termModeRef.current !== "cursor") {
+        e.preventDefault();
+        sendTermInput(e.shiftKey ? "\u001b[Z" : "\t");
+        return;
+      }
+
+      if (termModeRef.current !== "cursor-cli") return;
+      if (!termSessionIsPtyRef.current) return;
 
       let data: string | null = null;
       switch (e.key) {
