@@ -197,7 +197,6 @@ CodeSentinel Server (3990)
 - Agent-specific quick keys auto-switch while base keys stay available.
 - Built-in auth: password + token, login rate limit, captcha, encrypted login payload.
 - Optional per-project Linux run-as user for terminal execution.
-- Runtime logs and backend error outputs are English-first; UI text remains i18n (Chinese/English).
 
 ## Security Defaults
 
