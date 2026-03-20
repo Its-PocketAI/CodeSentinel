@@ -1480,6 +1480,35 @@ export function App() {
   const askImageButtonLabel = isImageUploading ? t("上传中…") : t("🖼️ 提问图");
   const askImageHintLabel = t("🖼️ 提问图片");
   const activeShortcutDoc = useMemo(() => TOOL_SHORTCUT_DOCS[termMode] ?? null, [termMode]);
+  const handleSettingsTextareaEnter = useCallback(
+    (
+      e: React.KeyboardEvent<HTMLTextAreaElement>,
+      setValue: (next: string) => void,
+    ) => {
+      // Mobile browsers may collapse the software keyboard on Enter in controlled textareas.
+      // Handle Enter manually to keep focus/keyboard stable while inserting a newline.
+      if (!isMobile || e.key !== "Enter") return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const composing =
+        (e.nativeEvent as KeyboardEvent | undefined)?.isComposing ?? false;
+      if (composing) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const el = e.currentTarget;
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? el.value.length;
+      const next = `${el.value.slice(0, start)}\n${el.value.slice(end)}`;
+      setValue(next);
+      requestAnimationFrame(() => {
+        try {
+          el.focus({ preventScroll: true });
+          const pos = start + 1;
+          el.setSelectionRange(pos, pos);
+        } catch {}
+      });
+    },
+    [isMobile],
+  );
   const commandDirty = useMemo(() => {
     if (!commandSettings) return false;
     const toNum = (v: string, fallback: number) => {
@@ -1525,6 +1554,45 @@ export function App() {
       void refreshTermSessions();
     }
   }, [isMobile, leftPanelTab, mobileTab, refreshTermSessions]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const onKeyDownCapture = (ev: KeyboardEvent) => {
+      if (ev.key !== "Enter") return;
+      if (ev.altKey || ev.ctrlKey || ev.metaKey) return;
+      if (ev.isComposing) return;
+      const target = ev.target as HTMLTextAreaElement | null;
+      if (!target || target.tagName !== "TEXTAREA") return;
+      if (!target.classList.contains("settingsTextarea")) return;
+      if (!target.closest(".settingsPanel")) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const start = target.selectionStart ?? target.value.length;
+      const end = target.selectionEnd ?? target.value.length;
+      const next = `${target.value.slice(0, start)}\n${target.value.slice(end)}`;
+
+      // Update controlled textarea value through native setter + input event
+      const proto = Object.getPrototypeOf(target);
+      const desc = Object.getOwnPropertyDescriptor(proto, "value");
+      if (desc?.set) {
+        desc.set.call(target, next);
+        target.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+
+      requestAnimationFrame(() => {
+        try {
+          target.focus({ preventScroll: true });
+          const pos = start + 1;
+          target.setSelectionRange(pos, pos);
+        } catch {}
+      });
+    };
+    document.addEventListener("keydown", onKeyDownCapture, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDownCapture, true);
+    };
+  }, [isMobile]);
 
   useEffect(() => {
     if (!uiStateLoadedRef.current) return;
@@ -3671,6 +3739,7 @@ export function App() {
             value={commandWhitelistText}
             disabled={commandDisabled}
             onChange={(e) => setCommandWhitelistText(e.target.value)}
+            onKeyDown={(e) => handleSettingsTextareaEnter(e, setCommandWhitelistText)}
           />
         </div>
         <div className="settingsField">
@@ -3682,6 +3751,7 @@ export function App() {
             value={commandDenylistText}
             disabled={commandDisabled}
             onChange={(e) => setCommandDenylistText(e.target.value)}
+            onKeyDown={(e) => handleSettingsTextareaEnter(e, setCommandDenylistText)}
           />
         </div>
         <div className="settingsFooter">
