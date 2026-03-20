@@ -549,20 +549,6 @@ input {
   background: rgba(56, 189, 248, 0.8);
 }
 
-.termMobilePanelRow {
-  width: 100%;
-}
-
-.termMobilePanelSwitch {
-  width: 100%;
-  display: flex;
-}
-
-.termMobilePanelSwitch .segBtn {
-  flex: 1 1 0;
-  text-align: center;
-}
-
 .termPasteBtn {
   flex-shrink: 0;
   padding: calc(5px * var(--ui-font-scale)) calc(10px * var(--ui-font-scale));
@@ -1632,12 +1618,31 @@ input {
   .tabs {
     width: 100%;
     margin-left: 0;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(56, 189, 248, 0.85) rgba(15, 23, 42, 0.28);
+  }
+
+  .tabs::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .tabs::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.28);
+  }
+
+  .tabs::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.8);
   }
 
   .tabBtn {
-    flex: 1 1 72px;
+    flex: 0 0 auto;
+    min-width: 72px;
     text-align: center;
   }
 
@@ -1646,19 +1651,36 @@ input {
   }
 
   .termPanelHeader .termPanelHeaderRow {
-    flex-wrap: wrap;
-    align-items: stretch;
-    overflow: visible;
+    flex-wrap: nowrap;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(56, 189, 248, 0.85) rgba(15, 23, 42, 0.28);
+    padding-bottom: 2px;
+  }
+
+  .termPanelHeader .termPanelHeaderRow::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .termPanelHeader .termPanelHeaderRow::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.28);
+  }
+
+  .termPanelHeader .termPanelHeaderRow::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.8);
   }
 
   .termPanelHeader .termPanelHeaderRow .termModeSegmented {
-    flex: 1 1 100%;
-    width: 100%;
+    flex: 0 0 auto;
   }
 
   .termPanelHeader .termPanelHeaderRow .termHeaderActions {
-    width: 100%;
-    max-width: 100%;
+    flex: 0 0 auto;
+    max-width: none;
     margin-left: 0;
     padding-bottom: 3px;
   }

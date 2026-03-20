@@ -304,7 +304,7 @@ export async function apiSetCommandSettings(settings: CommandSettings) {
 }
 
 export type UiState = {
-  mobileTab: "explorer" | "editor" | "terminal" | "settings";
+  mobileTab: "explorer" | "editor" | "terminal" | "windows" | "settings";
   leftPanelTab: "files" | "settings" | "windows";
   termMode: "cursor" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor-cli" | "restricted";
   cursorMode: "agent" | "plan" | "ask";

@@ -362,7 +362,7 @@ function normalizeUiState(input: UiState | null | undefined): UiState {
     return Math.min(max, Math.max(min, Math.round(n)));
   };
   return {
-    mobileTab: pick(raw.mobileTab, ["explorer", "editor", "terminal", "settings"], DEFAULT_UI_STATE.mobileTab),
+    mobileTab: pick(raw.mobileTab, ["explorer", "editor", "terminal", "windows", "settings"], DEFAULT_UI_STATE.mobileTab),
     leftPanelTab: pick(raw.leftPanelTab, ["files", "settings", "windows"], DEFAULT_UI_STATE.leftPanelTab),
     termMode: pick(raw.termMode, ["cursor", "codex", "claude", "opencode", "gemini", "kimi", "qwen", "cursor-cli", "restricted"], DEFAULT_UI_STATE.termMode),
     cursorMode: pick(raw.cursorMode, ["agent", "plan", "ask"], DEFAULT_UI_STATE.cursorMode),
@@ -809,8 +809,7 @@ function TreeView(props: {
 export function App() {
   const { t, lang, setLang } = useI18n();
   const [isMobile, setIsMobile] = useState(false);
-  const [mobileTab, setMobileTab] = useState<"explorer" | "editor" | "terminal" | "settings">(DEFAULT_UI_STATE.mobileTab);
-  const [mobileTerminalPanel, setMobileTerminalPanel] = useState<"terminal" | "windows">("terminal");
+  const [mobileTab, setMobileTab] = useState<"explorer" | "editor" | "terminal" | "windows" | "settings">(DEFAULT_UI_STATE.mobileTab);
   const [mobileWorkspaceDrawerOpen, setMobileWorkspaceDrawerOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"edit" | "preview">(DEFAULT_UI_STATE.editorMode);
   const [leftWidth, setLeftWidth] = useState(DEFAULT_UI_STATE.leftWidth);
@@ -1337,7 +1336,6 @@ export function App() {
     }
     detachActiveSession(nextMode);
     setTermMode(nextMode);
-    if (isMobile) setMobileTerminalPanel("terminal");
     if (nextMode !== "cursor") {
       const saved = getSessionForMode(nextMode);
       if (saved?.sessionId) {
@@ -1392,7 +1390,6 @@ export function App() {
       if (target.cwd && target.cwd !== terminalCwd) setTerminalCwd(target.cwd);
       if (isMobile) {
         setMobileTab("terminal");
-        setMobileTerminalPanel("terminal");
       }
       setRestoreNonce((n) => n + 1);
       return true;
@@ -1430,7 +1427,6 @@ export function App() {
       if (saved.cwd && saved.cwd !== terminalCwd) setTerminalCwd(saved.cwd);
       if (isMobile) {
         setMobileTab("terminal");
-        setMobileTerminalPanel("terminal");
       }
       autoAttachPreparedRef.current = true;
     } catch {
@@ -1449,7 +1445,6 @@ export function App() {
     setRestoreNonce((n) => n + 1);
     if (isMobile) {
       setMobileTab("terminal");
-      setMobileTerminalPanel("terminal");
     }
   }, [isMobile, mapSessionMode]);
 
@@ -1505,10 +1500,10 @@ export function App() {
       void refreshTermSessions();
       return;
     }
-    if (isMobile && mobileTab === "terminal" && mobileTerminalPanel === "windows") {
+    if (isMobile && mobileTab === "windows") {
       void refreshTermSessions();
     }
-  }, [isMobile, leftPanelTab, mobileTab, mobileTerminalPanel, refreshTermSessions]);
+  }, [isMobile, leftPanelTab, mobileTab, refreshTermSessions]);
 
   useEffect(() => {
     if (!uiStateLoadedRef.current) return;
@@ -4280,11 +4275,6 @@ export function App() {
                 {terminalCwd ? t("工作目录: {path}", { path: terminalCwd }) : ""}
               </div>
             </div>
-            {isMobile && mobileTerminalPanel === "windows" ? (
-              <div className="termWindowsWrap">
-                {WindowsPanel}
-              </div>
-            ) : (
             <div
               className={
                 "termAreaWrap" +
@@ -4538,7 +4528,6 @@ export function App() {
                 </div>
               ) : null}
                 </div>
-            )}
               </div>
             </div>
       </div>
@@ -4580,6 +4569,9 @@ export function App() {
               <button className={"tabBtn" + (mobileTab === "terminal" ? " tabBtnActive" : "")} onClick={() => setMobileTab("terminal")}>
                 {t("终端")}
               </button>
+              <button className={"tabBtn" + (mobileTab === "windows" ? " tabBtnActive" : "")} onClick={() => setMobileTab("windows")}>
+                {t("窗口列表")}
+              </button>
               <button className={"tabBtn" + (mobileTab === "settings" ? " tabBtnActive" : "")} onClick={() => setMobileTab("settings")}>
                 {t("设置")}
               </button>
@@ -4593,6 +4585,14 @@ export function App() {
             </div>
             <div className="panelBody">
               {SettingsPanel}
+            </div>
+          </div>
+          <div className={"panel" + (isMobile && mobileTab !== "windows" ? " hidden" : "")} style={{ flex: 1, minHeight: "65dvh" }}>
+            <div className="panelHeader">
+              <h2>{t("窗口列表")}</h2>
+            </div>
+            <div className="panelBody">
+              {WindowsPanel}
             </div>
           </div>
           {/* Mobile editor panel (same structure as desktop, isMobile makes collapse btn hidden) */}
@@ -4704,27 +4704,6 @@ export function App() {
             style={{ flex: 1, minHeight: "65dvh" }}
           >
             <div className="panelHeader termPanelHeader">
-              {isMobile ? (
-                <div className="termPanelHeaderRow termMobilePanelRow">
-                  <div className="segmented termMobilePanelSwitch" aria-label={t("窗口列表")}>
-                    <button
-                      className={"segBtn" + (mobileTerminalPanel === "terminal" ? " segBtnActive" : "")}
-                      onClick={() => setMobileTerminalPanel("terminal")}
-                    >
-                      {t("终端")}
-                    </button>
-                    <button
-                      className={"segBtn" + (mobileTerminalPanel === "windows" ? " segBtnActive" : "")}
-                      onClick={() => {
-                        setMobileTerminalPanel("windows");
-                        void refreshTermSessions();
-                      }}
-                    >
-                      {t("窗口列表")}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
               <div className="termPanelHeaderRow">
                 <div className="segmented termModeSegmented" aria-label={t("终端模式")}>
                   {enabledToolIds.map((id) => {
@@ -4745,7 +4724,7 @@ export function App() {
                 {activeToolId === "command" ? (
                   <span className="termBadge">{t("受限命令行")}</span>
                 ) : null}
-                {termMode !== "cursor" && (!isMobile || mobileTerminalPanel === "terminal") && (
+                {termMode !== "cursor" && (
                   <div className="termHeaderActions">
                     <button
                       type="button"
@@ -4791,11 +4770,6 @@ export function App() {
                 </div>
               )}
             </div>
-            {isMobile && mobileTerminalPanel === "windows" ? (
-              <div className="termWindowsWrap">
-                {WindowsPanel}
-              </div>
-            ) : (
             <div
               className={
                 "termAreaWrap" +
@@ -5054,7 +5028,6 @@ export function App() {
                 </div>
               ) : null}
             </div>
-            )}
           </div>
         </div>
       ) : null}

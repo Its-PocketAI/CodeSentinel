@@ -570,7 +570,7 @@ async function main() {
       return Math.min(max, Math.max(min, Math.round(n)));
     };
     return {
-      mobileTab: pick(raw.mobileTab, ["explorer", "editor", "terminal", "settings"], defaultUiState.mobileTab),
+      mobileTab: pick(raw.mobileTab, ["explorer", "editor", "terminal", "windows", "settings"], defaultUiState.mobileTab),
       leftPanelTab: pick(raw.leftPanelTab, ["files", "settings", "windows"], defaultUiState.leftPanelTab),
       termMode: pick(raw.termMode, ["cursor", "codex", "claude", "opencode", "gemini", "kimi", "qwen", "cursor-cli", "restricted"], defaultUiState.termMode),
       cursorMode: pick(raw.cursorMode, ["agent", "plan", "ask"], defaultUiState.cursorMode),
