@@ -181,6 +181,22 @@ export class TermManager {
     const cmd = argv[0]!;
     const args = argv.slice(1);
 
+    // Enforce policy checks before handling any built-in command.
+    // This keeps `pwd/cd/ls` behavior consistent with custom commands.
+    const whitelistKeys = Object.keys(this.opts.whitelist ?? {});
+    if (whitelistKeys.length > 0 && !this.opts.whitelist[cmd]) {
+      this.opts.send({ t: "term.data", sessionId: s.id, data: `\r\n[blocked] Command not allowed: ${cmd}\r\n` });
+      this.opts.send({ t: "term.exit", sessionId: s.id, code: 127 });
+      return;
+    }
+
+    const deny = (this.opts.denylist ?? []).includes(cmd);
+    if (deny) {
+      this.opts.send({ t: "term.data", sessionId: s.id, data: `\r\n[blocked] Dangerous command: ${cmd}\r\n` });
+      this.opts.send({ t: "term.exit", sessionId: s.id, code: 127 });
+      return;
+    }
+
     if (cmd === "pwd") {
       this.opts.send({ t: "term.data", sessionId: s.id, data: s.cwd + "\r\n" });
       this.opts.send({ t: "term.exit", sessionId: s.id, code: 0 });
@@ -224,22 +240,6 @@ export class TermManager {
         });
         this.opts.send({ t: "term.exit", sessionId: s.id, code: 1 });
       }
-      return;
-    }
-
-    // If whitelist is provided (legacy behavior), enforce it.
-    const whitelistKeys = Object.keys(this.opts.whitelist ?? {});
-    if (whitelistKeys.length > 0 && !this.opts.whitelist[cmd]) {
-      this.opts.send({ t: "term.data", sessionId: s.id, data: `\r\n[blocked] Command not allowed: ${cmd}\r\n` });
-      this.opts.send({ t: "term.exit", sessionId: s.id, code: 127 });
-      return;
-    }
-
-    // Default behavior: blacklist only dangerous commands.
-    const deny = (this.opts.denylist ?? []).includes(cmd);
-    if (deny) {
-      this.opts.send({ t: "term.data", sessionId: s.id, data: `\r\n[blocked] Dangerous command: ${cmd}\r\n` });
-      this.opts.send({ t: "term.exit", sessionId: s.id, code: 127 });
       return;
     }
 
