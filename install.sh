@@ -4,6 +4,7 @@ set -euo pipefail
 # CodeSentinel one-line installer
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash -s -- --for-user zh
 #
 # Optional env vars:
 #   CODESENTINEL_REPO   (default: https://github.com/Its-PocketAI/CodeSentinel.git)
@@ -15,14 +16,19 @@ set -euo pipefail
 #   CODESENTINEL_AUTH_USER (default: read from config, fallback admin)
 #   CODESENTINEL_AUTH_PASS (default: read from config, fallback change_me)
 #   CODESENTINEL_HEALTH_TIMEOUT_SEC (default: 60; startup health wait timeout)
+#   CODESENTINEL_FOR_USER (default: global; set zh for mainland China mirror profile)
+#   CODESENTINEL_ZH_NPM_REGISTRY (default: https://registry.npmmirror.com)
 
 REPO_URL="${CODESENTINEL_REPO:-https://github.com/Its-PocketAI/CodeSentinel.git}"
 BRANCH="${CODESENTINEL_BRANCH:-main}"
 INSTALL_DIR="${CODESENTINEL_DIR:-$HOME/CodeSentinel}"
 AUTO_START="${CODESENTINEL_START:-1}"
 INTERACTIVE_MODE="${CODESENTINEL_INTERACTIVE:-auto}"
+FOR_USER_PROFILE="${CODESENTINEL_FOR_USER:-global}"
+ZH_NPM_REGISTRY="${CODESENTINEL_ZH_NPM_REGISTRY:-https://registry.npmmirror.com}"
 CFG_PATH="config/config.json"
 TTY_DEV=""
+INSTALL_ENV_VARS=()
 
 if [[ -r /dev/tty && -w /dev/tty ]]; then
   TTY_DEV="/dev/tty"
@@ -90,6 +96,95 @@ prompt_secret() {
   printf '%s' "$val"
 }
 
+print_usage() {
+  cat <<'EOF'
+CodeSentinel installer
+
+Usage:
+  install.sh [--for-user <profile>]
+
+Profiles:
+  global          Default global profile (no mirror override)
+  zh              Mainland China profile (npm/pnpm mirror for install phase)
+
+Examples:
+  curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash -s -- --for-user zh
+
+Environment:
+  CODESENTINEL_FOR_USER=zh
+  CODESENTINEL_ZH_NPM_REGISTRY=https://registry.npmmirror.com
+EOF
+}
+
+normalize_for_user_profile() {
+  local raw="${1:-global}"
+  local lower
+  lower="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    global|intl|international)
+      printf 'global'
+      ;;
+    zh|cn|china)
+      printf 'zh'
+      ;;
+    *)
+      die "invalid --for-user value: $raw (supported: global, zh)"
+      ;;
+  esac
+}
+
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --for-user)
+        shift
+        [[ $# -gt 0 ]] || die "--for-user requires a value (global|zh)"
+        FOR_USER_PROFILE="$1"
+        ;;
+      --for-user=*)
+        FOR_USER_PROFILE="${1#*=}"
+        ;;
+      -h|--help)
+        print_usage
+        exit 0
+        ;;
+      *)
+        die "unknown argument: $1 (use --help)"
+        ;;
+    esac
+    shift
+  done
+}
+
+apply_install_profile() {
+  FOR_USER_PROFILE="$(normalize_for_user_profile "$FOR_USER_PROFILE")"
+  INSTALL_ENV_VARS=()
+  if [[ "$FOR_USER_PROFILE" == "zh" ]]; then
+    INSTALL_ENV_VARS=(
+      "npm_config_registry=$ZH_NPM_REGISTRY"
+      "NPM_CONFIG_REGISTRY=$ZH_NPM_REGISTRY"
+      "COREPACK_NPM_REGISTRY=$ZH_NPM_REGISTRY"
+      "PNPM_REGISTRY=$ZH_NPM_REGISTRY"
+    )
+    log "install profile: zh (npm/pnpm mirror: $ZH_NPM_REGISTRY)"
+    log "tip: if git clone is slow, set CODESENTINEL_REPO to your own mirror URL"
+  else
+    log "install profile: global"
+  fi
+}
+
+run_with_install_env() {
+  if (( ${#INSTALL_ENV_VARS[@]} > 0 )); then
+    env "${INSTALL_ENV_VARS[@]}" "$@"
+  else
+    "$@"
+  fi
+}
+
+parse_args "$@"
+apply_install_profile
+
 log "checking prerequisites..."
 require_cmd git
 require_cmd bash
@@ -104,7 +199,7 @@ if ! command -v pnpm >/dev/null 2>&1; then
   if command -v corepack >/dev/null 2>&1; then
     log "pnpm not found, enabling via corepack..."
     corepack enable >/dev/null 2>&1 || true
-    corepack prepare pnpm@10.4.0 --activate >/dev/null 2>&1 || die "failed to activate pnpm via corepack"
+    run_with_install_env corepack prepare pnpm@10.4.0 --activate >/dev/null 2>&1 || die "failed to activate pnpm via corepack"
   else
     die "pnpm not found and corepack is unavailable"
   fi
@@ -124,7 +219,7 @@ fi
 
 cd "$INSTALL_DIR"
 log "installing dependencies..."
-pnpm install --frozen-lockfile || pnpm install
+run_with_install_env pnpm install --frozen-lockfile || run_with_install_env pnpm install
 
 check_better_sqlite3() {
   node - <<'NODE'
@@ -190,7 +285,7 @@ if ! check_better_sqlite3; then
   if command -v npm >/dev/null 2>&1; then
     (
       cd "$INSTALL_DIR/apps/server"
-      npm rebuild better-sqlite3 --build-from-source
+      run_with_install_env npm rebuild better-sqlite3 --build-from-source
     ) || die "failed to rebuild better-sqlite3"
   else
     die "npm is required to rebuild better-sqlite3 (not found)"

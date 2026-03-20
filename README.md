@@ -32,6 +32,15 @@ It is optimized for mobile + desktop, and designed for persistent terminal workf
 curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash
 ```
 
+### Mainland China profile (`--for-user zh`)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | \
+  bash -s -- --for-user zh
+```
+
+This profile enables a mainland-friendly npm/pnpm mirror during install only (it does not overwrite your global npm config).
+
 What it does:
 - Checks Node.js and pnpm.
 - Clones/updates the repository to `~/CodeSentinel` by default.
@@ -59,6 +68,8 @@ Available env vars:
 - `CODESENTINEL_INTERACTIVE` (`auto`/`1`/`0`, default: `auto`)
 - `CODESENTINEL_PORT`, `CODESENTINEL_AUTH_USER`, `CODESENTINEL_AUTH_PASS` (for non-interactive/CI override)
 - `CODESENTINEL_HEALTH_TIMEOUT_SEC` (startup health wait timeout, default `60`)
+- `CODESENTINEL_FOR_USER` (`global` or `zh`, default: `global`)
+- `CODESENTINEL_ZH_NPM_REGISTRY` (default: `https://registry.npmmirror.com`, only used with `--for-user zh`)
 
 Notes:
 - `CODESENTINEL_INTERACTIVE=auto` prompts when a TTY is available; in CI/non-TTY it falls back to non-interactive mode.
@@ -147,6 +158,13 @@ For a clean Linux server bootstrap:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | \
   CODESENTINEL_DIR=/opt/data/CodeSentinal bash
+```
+
+Mainland China optimized bootstrap:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | \
+  CODESENTINEL_DIR=/opt/data/CodeSentinal bash -s -- --for-user zh
 ```
 
 Then use:
