@@ -244,7 +244,7 @@ export async function apiAuthLogout() {
 }
 
 export async function apiRoots() {
-  return j<{ ok: true; roots: string[] }>(await fetchWithRetry("/api/roots"));
+  return j<{ ok: true; roots: string[]; rootsAllowAll?: boolean }>(await fetchWithRetry("/api/roots"));
 }
 
 export async function apiGetActiveRoot() {

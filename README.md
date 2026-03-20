@@ -227,6 +227,22 @@ Important fields:
 - `limits.termSessionIdleHours` (`1..168`, default `12`)
 - `tooling.bins.*` and `tooling.checkArgs.*`
 - `defaultProjectUser`, `projectUsers[]` (Linux run-as model)
+- `roots`: list mode by default; set `"all"` to allow any path accessible to the runtime user.
+
+`roots=all` examples:
+
+```json
+{
+  "roots": ["all"]
+}
+```
+
+```bash
+export CODESENTINEL_ROOTS='["all"]'
+```
+
+Security note:
+- When the server process runs as `root`, `roots=all` effectively grants full filesystem access through APIs. Prefer non-root runtime.
 
 <a id="terminal-run-user-linux"></a>
 ## Terminal Run User (Linux)

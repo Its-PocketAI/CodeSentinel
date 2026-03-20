@@ -226,6 +226,22 @@ cp config/config.example.json config/config.json
 - `limits.termSessionIdleHours`（`1..168`，默认 `12`）
 - `tooling.bins.*`、`tooling.checkArgs.*`
 - `defaultProjectUser`、`projectUsers[]`（Linux 专属用户模型）
+- `roots`：默认是路径列表模式；可写入 `"all"` 表示允许访问当前运行用户权限范围内的任意路径。
+
+`roots=all` 示例：
+
+```json
+{
+  "roots": ["all"]
+}
+```
+
+```bash
+export CODESENTINEL_ROOTS='["all"]'
+```
+
+安全提示：
+- 当服务进程以 `root` 运行时，`roots=all` 等价于通过 API 拥有完整文件系统访问能力。生产环境建议使用非 root 运行。
 
 <a id="terminal-run-user-linux"></a>
 ## 终端运行用户（Linux）

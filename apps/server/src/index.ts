@@ -12,7 +12,7 @@ import { execa } from "execa";
 import Busboy from "busboy";
 
 import { loadConfig, rootsOverridePath, readRootsOverride } from "./config.js";
-import { normalizeRoots, validatePathInRoots } from "./pathGuard.js";
+import { ROOTS_ALL_SENTINEL, isAllRootsToken, normalizeRoots, validatePathInRoots } from "./pathGuard.js";
 import { listDir, readTextFile, writeTextFile, createDir, statPath } from "./fsApi.js";
 import { attachTermWs, closeActiveTermSession, listActiveTermSessions } from "./term/wsTerm.js";
 import { getDataDir } from "./paths.js";
@@ -613,6 +613,7 @@ async function main() {
     defaultRoot = "";
   }
 
+  let rootsAllowAll = Boolean(cfg.rootsAllowAll);
   let roots: string[];
   try {
     roots = await normalizeRoots(cfg.roots);
@@ -635,6 +636,11 @@ async function main() {
     roots = [defaultRoot];
     console.log(`[config] No roots configured; using default root: ${defaultRoot}`);
   }
+  if (rootsAllowAll && isRootUser) {
+    console.warn("[config] roots=all enabled while server runs as root. This grants full filesystem access to API callers. Prefer running server as non-root.");
+  }
+  let guardRoots = rootsAllowAll ? [ROOTS_ALL_SENTINEL] : roots;
+  const validateRootPath = (inputPath: string) => validatePathInRoots(inputPath, guardRoots);
 
   // 不阻塞启动：在后台检测 Cursor Agent CLI，避免 checkAgentCli 卡住导致服务迟迟无法监听端口
   void checkAgentCli();
@@ -664,7 +670,7 @@ async function main() {
   const projectUserRules = Array.isArray(cfg.projectUsers)
     ? cfg.projectUsers.filter((r) => r && typeof r.root === "string" && typeof r.username === "string")
     : [];
-  const resolveRunAs = (cwd: string) => resolveProjectRunAs(cwd, projectUserRules, roots, defaultProjectUser);
+  const resolveRunAs = (cwd: string) => resolveProjectRunAs(cwd, projectUserRules, guardRoots, defaultProjectUser);
 
   const defaultCommandSettings = {
     mode: baseWhitelistKeys.length > 0 ? "allowlist" : "denylist",
@@ -1121,7 +1127,7 @@ async function main() {
 
   app.get("/api/roots", (_req, res) => {
     try {
-      res.json({ ok: true, roots: Array.isArray(roots) ? roots : [] });
+      res.json({ ok: true, roots: Array.isArray(roots) ? roots : [], rootsAllowAll });
     } catch (e: any) {
       console.error("[api/roots]", e);
       res.status(500).json({ ok: false, error: e?.message ?? String(e) });
@@ -1191,6 +1197,7 @@ async function main() {
         platform: process.platform,
         configPath,
         roots,
+        rootsAllowAll,
         defaultRoot,
         setupDone,
         dbReady,
@@ -1316,12 +1323,13 @@ async function main() {
   app.post("/api/setup/add-root", async (req, res) => {
     if (!isLocalReq(req)) return res.status(403).json({ ok: false, error: "仅允许本机访问" });
     try {
-      const rootRaw = String((req.body as any)?.root ?? "");
+      const rootRaw = String((req.body as any)?.root ?? "").trim();
       const setActive = Boolean((req.body as any)?.setActive ?? true);
       if (!rootRaw) return res.status(400).json({ ok: false, error: "Missing root" });
 
-      // Validate it's a directory and normalize.
-      const norm = (await normalizeRoots([rootRaw]))[0];
+      const wantsAll = isAllRootsToken(rootRaw);
+      // Validate it's a directory and normalize when not using all mode.
+      const norm = wantsAll ? "all" : (await normalizeRoots([rootRaw]))[0];
 
       // Prefer roots override file; fall back to config.json roots if present.
       let existing = (await readRootsOverride(rootsPath)) ?? [];
@@ -1334,7 +1342,10 @@ async function main() {
           /* ignore */
         }
       }
-      const merged = Array.from(new Set([...existing, norm]));
+      const existingClean = existing.map((v) => String(v).trim()).filter(Boolean);
+      const merged = wantsAll
+        ? Array.from(new Set(["all", ...existingClean]))
+        : Array.from(new Set([...existingClean, norm]));
       await fs.promises.mkdir(path.dirname(rootsPath), { recursive: true });
       await fs.promises.writeFile(rootsPath, JSON.stringify(merged, null, 2) + "\n", "utf8");
 
@@ -1347,22 +1358,32 @@ async function main() {
         );
       } catch {}
 
-      // Refresh in-memory roots for this running server.
-      roots = await normalizeRoots(merged);
+      // Refresh in-memory roots/guard mode for this running server.
+      rootsAllowAll = merged.some((v) => isAllRootsToken(v));
+      const mergedRoots = merged.filter((v) => !isAllRootsToken(v));
+      try {
+        roots = await normalizeRoots(mergedRoots);
+      } catch {
+        roots = defaultRoot ? [defaultRoot] : roots;
+      }
+      if (roots.length === 0 && defaultRoot) {
+        roots = [defaultRoot];
+      }
+      guardRoots = rootsAllowAll ? [ROOTS_ALL_SENTINEL] : roots;
 
       if (setActive) {
         try {
           const db = await getDbModule();
-          db.setActiveRoot(norm);
+          db.setActiveRoot(wantsAll ? (roots[0] ?? defaultRoot ?? "") : norm);
         } catch {}
       }
 
-      let activeRoot: string = norm;
+      let activeRoot: string = wantsAll ? (roots[0] ?? defaultRoot ?? "") : norm;
       try {
         const db = await getDbModule();
-        activeRoot = setActive ? norm : (db.getActiveRoot() ?? norm);
+        activeRoot = setActive ? activeRoot : (db.getActiveRoot() ?? activeRoot);
       } catch {}
-      res.json({ ok: true, roots, activeRoot, configPath, rootsPath });
+      res.json({ ok: true, roots, rootsAllowAll, activeRoot, configPath, rootsPath });
     } catch (e: any) {
       res.status(500).json({ ok: false, error: e?.message ?? String(e) });
     }
@@ -1608,7 +1629,7 @@ async function main() {
   app.get("/api/list", async (req, res) => {
     try {
       const p = String(req.query.path ?? "");
-      const r = await listDir(roots, p);
+      const r = await listDir(guardRoots, p);
       res.json({ ok: true, ...r });
     } catch (e: any) {
       res.status(400).json({ ok: false, error: e?.message ?? String(e) });
@@ -1618,7 +1639,7 @@ async function main() {
   app.get("/api/stat", async (req, res) => {
     try {
       const p = String(req.query.path ?? "");
-      const r = await statPath(roots, p);
+      const r = await statPath(guardRoots, p);
       res.json({ ok: true, ...r });
     } catch (e: any) {
       res.status(400).json({ ok: false, error: e?.message ?? String(e) });
@@ -1633,7 +1654,7 @@ async function main() {
       const hardLimit = 50 * 1024 * 1024;
       const defaultLimit = 10 * 1024 * 1024;
       const maxBytes = Number.isFinite(maxReq) && maxReq > 0 ? Math.min(maxReq, hardLimit) : defaultLimit;
-      const r = await readTextFile(roots, p, maxBytes);
+      const r = await readTextFile(guardRoots, p, maxBytes);
       res.json({ ok: true, ...r });
     } catch (e: any) {
       res.status(400).json({ ok: false, error: e?.message ?? String(e) });
@@ -1643,7 +1664,7 @@ async function main() {
   app.get("/api/download", async (req, res) => {
     try {
       const p = String(req.query.path ?? "");
-      const real = await validatePathInRoots(p, roots);
+      const real = await validateRootPath(p);
       const st = await fs.promises.stat(real);
       if (!st.isFile()) {
         return res.status(400).json({ ok: false, error: "Not a file" });
@@ -1660,7 +1681,7 @@ async function main() {
   app.delete("/api/delete", async (req, res) => {
     try {
       const p = String(req.query.path ?? "");
-      const real = await validatePathInRoots(p, roots);
+      const real = await validateRootPath(p);
       if (roots.some((r) => real === r)) {
         return res.status(400).json({ ok: false, error: "Cannot delete root" });
       }
@@ -1680,7 +1701,7 @@ async function main() {
     try {
       const p = String(req.body?.path ?? "");
       const text = typeof req.body?.text === "string" ? req.body.text : "";
-      const r = await writeTextFile(roots, p, text);
+      const r = await writeTextFile(guardRoots, p, text);
       res.json({ ok: true, ...r });
     } catch (e: any) {
       res.status(400).json({ ok: false, error: e?.message ?? String(e) });
@@ -1690,7 +1711,7 @@ async function main() {
   app.post("/api/mkdir", async (req, res) => {
     try {
       const p = String(req.body?.path ?? "");
-      const r = await createDir(roots, p);
+      const r = await createDir(guardRoots, p);
       res.json({ ok: true, ...r });
     } catch (e: any) {
       res.status(400).json({ ok: false, error: e?.message ?? String(e) });
@@ -1718,7 +1739,7 @@ async function main() {
       hadFile = true;
       writePromise = (async () => {
         if (!targetDir) throw new Error("Missing path");
-        const realDir = await validatePathInRoots(targetDir, roots);
+        const realDir = await validateRootPath(targetDir);
         const st = await fs.promises.stat(realDir);
         if (!st.isDirectory()) throw new Error("Target is not a directory");
 
@@ -1784,7 +1805,7 @@ async function main() {
       }
 
       // Validate cwd is in roots
-      const realCwd = await validatePathInRoots(cwd, roots);
+      const realCwd = await validateRootPath(cwd);
 
       const result = await executeCursorAgent(prompt, mode, realCwd, model);
       res.json({ ok: true, result });
@@ -1808,7 +1829,7 @@ async function main() {
         return res.status(400).json({ ok: false, error: "Missing prompt" });
       }
 
-      const realCwd = await validatePathInRoots(cwd, roots);
+      const realCwd = await validateRootPath(cwd);
 
       const runId = crypto.randomUUID();
       const run: AgentRun = {
@@ -1967,7 +1988,7 @@ async function main() {
         return res.status(400).json({ ok: false, error: "Missing prompt" });
       }
 
-      const realCwd = await validatePathInRoots(cwd, roots);
+      const realCwd = await validateRootPath(cwd);
 
       const runId = crypto.randomUUID();
       const filePath = path.join(bufferDir, `${runId}.ndjson`);
@@ -2331,7 +2352,7 @@ async function main() {
       if (!root || !filePath) {
         return res.status(400).json({ ok: false, error: "Missing root or filePath" });
       }
-      validatePathInRoots(filePath, roots);
+      validateRootPath(filePath);
       db.setLastOpenedFile(root, filePath);
       res.json({ ok: true });
     } catch (e: any) {
@@ -2389,7 +2410,7 @@ async function main() {
           return { ok: true };
         }
       : undefined,
-    validateCwd: (cwd) => validatePathInRoots(cwd, roots),
+    validateCwd: (cwd) => validateRootPath(cwd),
   });
 
   server.on("error", (err: NodeJS.ErrnoException) => {

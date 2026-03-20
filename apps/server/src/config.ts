@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isAllRootsToken } from "./pathGuard.js";
 
 export type CommandSpec = { title?: string };
 
@@ -21,6 +22,7 @@ export type AppConfig = {
     };
   };
   roots: string[];
+  rootsAllowAll?: boolean;
   /** 任务输出缓冲目录，默认 repo/data/agent-buffers */
   bufferDir?: string;
   commandWhitelist?: Record<string, CommandSpec>;
@@ -125,8 +127,14 @@ export async function loadConfig(configPath: string): Promise<AppConfig> {
     parsed.roots = rootsOverride;
   }
 
-  if (!parsed || !Array.isArray(parsed.roots)) parsed.roots = [];
-  if (parsed.commandWhitelist && typeof parsed.commandWhitelist !== "object") parsed.commandWhitelist = {};
-  if (!Array.isArray(parsed.dangerousCommandDenylist)) parsed.dangerousCommandDenylist = [];
-  return applyEnvOverrides(parsed);
+  const resolved = applyEnvOverrides(parsed);
+  if (!resolved || !Array.isArray(resolved.roots)) resolved.roots = [];
+  resolved.roots = resolved.roots.map((v) => String(v));
+  resolved.rootsAllowAll = resolved.roots.some((v) => isAllRootsToken(v));
+  resolved.roots = resolved.roots
+    .map((v) => String(v).trim())
+    .filter((v) => v.length > 0 && !isAllRootsToken(v));
+  if (resolved.commandWhitelist && typeof resolved.commandWhitelist !== "object") resolved.commandWhitelist = {};
+  if (!Array.isArray(resolved.dangerousCommandDenylist)) resolved.dangerousCommandDenylist = [];
+  return resolved;
 }

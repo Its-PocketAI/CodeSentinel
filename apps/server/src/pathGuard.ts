@@ -1,6 +1,16 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+export const ROOTS_ALL_SENTINEL = "__ALL__";
+
+export function isAllRootsToken(input: unknown) {
+  return typeof input === "string" && input.trim().toLowerCase() === "all";
+}
+
+export function hasAllRootsAccess(roots: readonly string[]) {
+  return roots.some((r) => r === ROOTS_ALL_SENTINEL || isAllRootsToken(r));
+}
+
 export function normalizeRoot(p: string) {
   const abs = path.resolve(p);
   // Strip trailing slash for consistent prefix checks.
@@ -49,6 +59,7 @@ export async function validatePathInRoots(inputPath: string, roots: string[]) {
   if (typeof inputPath !== "string" || inputPath.length === 0) throw new Error("Missing path");
   const abs = path.resolve(inputPath);
   const real = await realpathSafe(abs);
+  if (hasAllRootsAccess(roots)) return real;
   for (const r of roots) {
     if (real === r) return real;
     if (real.startsWith(r + path.sep)) return real;

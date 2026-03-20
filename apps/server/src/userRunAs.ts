@@ -103,6 +103,9 @@ function isUnder(root: string, target: string) {
 }
 
 function isRuleAllowed(ruleRoot: string, allowedRoots: string[]) {
+  if (allowedRoots.some((r) => r === "__ALL__" || String(r).trim().toLowerCase() === "all")) {
+    return true;
+  }
   for (const r of allowedRoots) {
     if (ruleRoot === r) return true;
     const prefix = r.endsWith(path.sep) ? r : r + path.sep;
@@ -118,6 +121,7 @@ export function resolveProjectRunAs(
   defaultUser?: string | null,
 ): RunAsUser | null {
   if (process.platform === "win32") return null;
+  const allowAllRoots = allowedRoots.some((r) => r === "__ALL__" || String(r).trim().toLowerCase() === "all");
   const normCwd = normalizePath(cwd);
   const normRoots = allowedRoots.map((r) => normalizePath(r));
   let best: ProjectUserRule | null = null;
@@ -156,9 +160,11 @@ export function resolveProjectRunAs(
     if (user) return user;
   }
   if (!defaultUser) return null;
-  const home = resolveUserHome(defaultUser);
-  if (!home) return null;
-  const normHome = normalizePath(home);
-  if (!isUnder(normHome, normCwd)) return null;
-  return pickUser(defaultUser, "default");
+  if (!allowAllRoots) {
+    const home = resolveUserHome(defaultUser);
+    if (!home) return null;
+    const normHome = normalizePath(home);
+    if (!isUnder(normHome, normCwd)) return null;
+  }
+  return pickUser(defaultUser, allowAllRoots ? "default-all" : "default");
 }

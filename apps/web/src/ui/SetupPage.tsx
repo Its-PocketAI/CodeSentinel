@@ -10,6 +10,7 @@ type SetupCheck = {
   ok: boolean;
   platform?: string;
   roots?: string[];
+  rootsAllowAll?: boolean;
   defaultRoot?: string;
   dbReady?: boolean;
   dbError?: string | null;
@@ -43,6 +44,7 @@ export function SetupPage() {
       if (!msg) return t("请求失败");
       if (msg === "仅允许本机访问" || msg === "setup_local_only") return t("仅允许本机访问（请在服务端本机操作）");
       if (msg === "No valid roots" || msg === "invalid_root_path") return t("路径不正确，请输入有效的绝对目录路径");
+      if (msg === "Path is outside configured roots") return t("路径不在允许范围内，请检查 roots 配置");
       if (msg.includes("ENOENT") || msg === "root_not_found") return t("路径不存在，请检查后重试");
       if (msg.includes("EACCES") || msg.includes("EPERM") || msg === "root_no_permission") return t("路径无权限访问，请更换目录或调整权限");
       return msg;
@@ -89,7 +91,8 @@ export function SetupPage() {
   }, [setupData?.dbReady]);
 
   const roots = setupData?.roots ?? [];
-  const step1Done = roots.length > 0;
+  const rootsAllowAll = setupData?.rootsAllowAll === true;
+  const step1Done = rootsAllowAll || roots.length > 0;
 
   const handleAddRoots = async () => {
     const lines = rootsInput
@@ -114,7 +117,7 @@ export function SetupPage() {
           });
           const data = await r.json();
           if (data?.ok) {
-            setSetupData((prev) => (prev ? { ...prev, roots: data.roots } : null));
+            setSetupData((prev) => (prev ? { ...prev, roots: data.roots, rootsAllowAll: data.rootsAllowAll } : null));
             added.push(path);
           } else {
             failed.push(`${path}: ${mapSetupError(data?.error ?? t("添加失败"))}`);
@@ -270,6 +273,8 @@ export function SetupPage() {
               <>
                 <h2>{t("第一步：选择根目录")}</h2>
                 <p>{t("添加允许在 CodeSentinel（盯码侠）中访问的根目录（至少一个）。每行一个路径，可一次添加多个。")}</p>
+                <p className="setupHint">{t("支持输入 all：允许访问当前运行用户权限范围内的任意路径。")}</p>
+                {rootsAllowAll && <p className="setupStatus setupStatusOk">✓ {t("当前为 all 模式（全路径访问，受运行用户权限限制）")}</p>}
                 {roots.length > 0 && (
                   <ul className="setupRootList">
                     {roots.map((r) => (
