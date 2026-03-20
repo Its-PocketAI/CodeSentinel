@@ -71,6 +71,19 @@ function parseArgs(line: string): string[] {
   return out;
 }
 
+function commonPrefix(items: string[]) {
+  if (items.length === 0) return "";
+  let out = items[0] ?? "";
+  for (let i = 1; i < items.length; i++) {
+    const cur = items[i] ?? "";
+    let j = 0;
+    while (j < out.length && j < cur.length && out[j] === cur[j]) j++;
+    out = out.slice(0, j);
+    if (!out) break;
+  }
+  return out;
+}
+
 async function cmdLs(targetPath: string) {
   const st = await fs.stat(targetPath);
   if (st.isDirectory()) {
@@ -122,6 +135,8 @@ export class TermManager {
         const line = s.lineBuf;
         s.lineBuf = "";
         s.queue.push(line);
+      } else if (ch === "\t") {
+        await this.completePathOnTab(s);
       } else if (ch === "\b" || ch === "\x7f") {
         // Backspace / DEL
         s.lineBuf = s.lineBuf.slice(0, -1);
@@ -130,6 +145,102 @@ export class TermManager {
       }
     }
     await this.pump(s);
+  }
+
+  private async completePathOnTab(s: Session) {
+    const line = s.lineBuf;
+    if (!line) {
+      this.opts.send({ t: "term.data", sessionId: s.id, data: "\u0007" });
+      return;
+    }
+
+    // Only do path completion in command argument context (after first token),
+    // or when token already looks like a path.
+    const m = /^(.*?)([^\s]*)$/.exec(line);
+    const head = m?.[1] ?? "";
+    const token = m?.[2] ?? "";
+    const hasWhitespace = /\s/.test(line);
+    const pathLike = hasWhitespace || token.includes("/") || token.startsWith(".") || token.startsWith("~");
+    if (!pathLike) {
+      this.opts.send({ t: "term.data", sessionId: s.id, data: "\u0007" });
+      return;
+    }
+
+    if ((token.startsWith("'") && !token.endsWith("'")) || (token.startsWith("\"") && !token.endsWith("\""))) {
+      this.opts.send({ t: "term.data", sessionId: s.id, data: "\u0007" });
+      return;
+    }
+
+    const slash = token.lastIndexOf("/");
+    const tokenDirPart = slash >= 0 ? token.slice(0, slash + 1) : "";
+    const tokenNamePart = slash >= 0 ? token.slice(slash + 1) : token;
+    const dirInput = tokenDirPart || ".";
+
+    let absDir = "";
+    if (token.startsWith("~")) {
+      const home = process.env.HOME || "";
+      if (!home) {
+        this.opts.send({ t: "term.data", sessionId: s.id, data: "\u0007" });
+        return;
+      }
+      const rest = dirInput.replace(/^~\/?/, "");
+      absDir = path.resolve(home, rest);
+    } else if (path.isAbsolute(dirInput)) {
+      absDir = path.resolve(dirInput);
+    } else {
+      absDir = path.resolve(s.cwd, dirInput);
+    }
+
+    let realDir = "";
+    try {
+      realDir = await this.opts.validateCwd(absDir);
+    } catch {
+      this.opts.send({ t: "term.data", sessionId: s.id, data: "\u0007" });
+      return;
+    }
+
+    let entries: Array<import("node:fs").Dirent> = [];
+    try {
+      entries = await fs.readdir(realDir, { withFileTypes: true });
+    } catch {
+      this.opts.send({ t: "term.data", sessionId: s.id, data: "\u0007" });
+      return;
+    }
+
+    const matches = entries
+      .filter((ent) => ent.name.startsWith(tokenNamePart))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((ent) => `${tokenDirPart}${ent.name}${ent.isDirectory() ? "/" : ""}`);
+
+    if (!matches.length) {
+      this.opts.send({ t: "term.data", sessionId: s.id, data: "\u0007" });
+      return;
+    }
+
+    if (matches.length === 1) {
+      const only = matches[0]!;
+      const completed = only.endsWith("/") ? only : `${only} `;
+      const delta = completed.slice(token.length);
+      s.lineBuf = `${head}${completed}`;
+      if (delta) this.opts.send({ t: "term.data", sessionId: s.id, data: delta });
+      return;
+    }
+
+    const prefix = commonPrefix(matches);
+    if (prefix.length > token.length) {
+      const delta = prefix.slice(token.length);
+      s.lineBuf = `${head}${prefix}`;
+      if (delta) this.opts.send({ t: "term.data", sessionId: s.id, data: delta });
+    }
+
+    const maxList = 120;
+    const shown = matches.slice(0, maxList);
+    const more = matches.length > shown.length ? ` ... (+${matches.length - shown.length})` : "";
+    this.opts.send({
+      t: "term.data",
+      sessionId: s.id,
+      data: `\r\n${shown.join("  ")}${more}\r\n$ ${s.lineBuf}`,
+    });
   }
 
   private mustGet(id: string) {

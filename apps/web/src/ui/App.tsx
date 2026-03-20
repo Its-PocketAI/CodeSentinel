@@ -1659,16 +1659,19 @@ export function App() {
       return;
     }
 
-    const isPty = termSessionIsPtyRef.current;
-    if (!isPty) {
-      const isEnter = data === "\r" || data === "\n" || data === "\r\n";
-      if (termModeRef.current === "restricted") {
-        if (data === "\u007f" || data === "\b") {
-          termInputBufRef.current = termInputBufRef.current.slice(0, -1);
-          term.write("\b \b");
-        } else if (isEnter) {
-          const line = termInputBufRef.current.trim();
-          termInputBufRef.current = "";
+      const isPty = termSessionIsPtyRef.current;
+      if (!isPty) {
+        const isEnter = data === "\r" || data === "\n" || data === "\r\n";
+        if (termModeRef.current === "restricted") {
+          if (data === "\t") {
+            // In restricted-exec mode, Tab completion is handled by server logic.
+            // Do not locally echo '\t' to avoid visual jump/misalignment.
+          } else if (data === "\u007f" || data === "\b") {
+            termInputBufRef.current = termInputBufRef.current.slice(0, -1);
+            term.write("\b \b");
+          } else if (isEnter) {
+            const line = termInputBufRef.current.trim();
+            termInputBufRef.current = "";
           term.write("\r\n");
           if (line === "codex") {
             term.write(`${t("[启动 codex…]")}\r\n`);
@@ -2019,7 +2022,11 @@ export function App() {
       // prevent browser focus-jump and forward Tab into the terminal session.
       if (e.key === "Tab" && termModeRef.current !== "cursor") {
         e.preventDefault();
-        sendTermInput(e.shiftKey ? "\u001b[Z" : "\t");
+        if (termModeRef.current === "restricted" && !termSessionIsPtyRef.current) {
+          sendTermInput("\t");
+        } else {
+          sendTermInput(e.shiftKey ? "\u001b[Z" : "\t");
+        }
         return;
       }
 
