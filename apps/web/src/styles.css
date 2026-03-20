@@ -1472,6 +1472,38 @@ input {
   bottom: calc(var(--term-mobile-controls-h, 0px) + var(--term-kb-bottom, 0px));
 }
 
+.termLongPressMenu {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel) 86%, #000 14%);
+  box-shadow: 0 8px 20px rgba(2, 6, 23, 0.35);
+  z-index: 12;
+  overflow: hidden;
+}
+
+.termLongPressMenuBtn {
+  border: none;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  padding: calc(8px * var(--ui-font-scale)) calc(12px * var(--ui-font-scale));
+  font-family: var(--mono);
+  font-size: calc(12px * var(--ui-font-scale));
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.termLongPressMenuBtn:last-child {
+  border-right: none;
+}
+
+.termLongPressMenuBtn:active {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
 .termMobileControls {
   position: absolute;
   left: 0;

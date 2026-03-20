@@ -58,11 +58,16 @@ type TreeNode = {
 type ToolId = "cursor" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor-cli" | "command";
 type TermMode = "restricted" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor" | "cursor-cli";
 type MobileTermQuickKey = { id: string; label: string; data: string };
+type MobileTermCell = { col: number; row: number };
+type MobileTermLongPressMenuState = { left: number; top: number };
 type MobileTermTouchState = {
   startX: number;
   startY: number;
   startScrollTop: number;
   startScrollLeft: number;
+  latestX: number;
+  latestY: number;
+  longPressed: boolean;
   moved: boolean;
 };
 type ShortcutDocItem = { key: string; action: string };
@@ -89,6 +94,8 @@ const TOOL_DEFS: { id: ToolId; label: string; desc: string }[] = [
 const DEFAULT_TOOL_SETTINGS: UiToolSetting[] = TOOL_DEFS.map((t) => ({ id: t.id, enabled: true }));
 const LARGE_FILE_THRESHOLD_BYTES = 10 * 1024 * 1024;
 const LARGE_FILE_HARD_LIMIT_BYTES = 50 * 1024 * 1024;
+const MOBILE_TERM_LONG_PRESS_MS = 420;
+const MOBILE_TERM_LONG_PRESS_MOVE_CANCEL_PX = 10;
 const AGENT_MOBILE_QUICK_KEYS: Partial<Record<TermMode, MobileTermQuickKey[]>> = {
   codex: [
     { id: "shift-left", label: "Shift+←", data: "\u001b[1;2D" },
@@ -1264,6 +1271,9 @@ export function App() {
   const mobileKeyboardGateTimerRef = useRef<number | null>(null);
   const termMobileControlsRef = useRef<HTMLDivElement | null>(null);
   const mobileTermTouchStateRef = useRef<MobileTermTouchState | null>(null);
+  const mobileTermLongPressTimerRef = useRef<number | null>(null);
+  const mobileTermSelectionAnchorRef = useRef<MobileTermCell | null>(null);
+  const [mobileTermLongPressMenu, setMobileTermLongPressMenu] = useState<MobileTermLongPressMenuState | null>(null);
   const lastMobileControlsHRef = useRef<number>(-1);
   const mobileSidebarToggleRef = useRef<HTMLButtonElement | null>(null);
   const chatHeaderContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1684,27 +1694,212 @@ export function App() {
     });
   }, [t]);
 
+  const sendTermRawInput = useCallback((payload: string) => {
+    const sid = termSessionIdRef.current;
+    const client = termClientRef.current;
+    if (!sid || !client) {
+      setStatus(t("[提示] 当前模式暂无会话，请点击“新建”"));
+      return false;
+    }
+    if (!payload) return false;
+    void client.stdin(sid, payload).catch((e) => {
+      setStatus(t("[错误] 终端: {msg}", { msg: e?.message ?? String(e) }));
+    });
+    return true;
+  }, [t]);
+
+  const writeClipboardText = useCallback(async (text: string) => {
+    if (!text) return false;
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // Fall through to legacy copy path.
+      }
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const clearMobileTermLongPressTimer = useCallback(() => {
+    if (mobileTermLongPressTimerRef.current !== null) {
+      window.clearTimeout(mobileTermLongPressTimerRef.current);
+      mobileTermLongPressTimerRef.current = null;
+    }
+  }, []);
+
+  const closeMobileTermLongPressMenu = useCallback((clearSelection = false) => {
+    clearMobileTermLongPressTimer();
+    setMobileTermLongPressMenu(null);
+    mobileTermSelectionAnchorRef.current = null;
+    if (clearSelection) {
+      try {
+        termRef.current?.clearSelection();
+      } catch {}
+    }
+  }, [clearMobileTermLongPressTimer]);
+
+  const openMobileTermLongPressMenu = useCallback((clientX: number, clientY: number) => {
+    const wrap = termAreaWrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const menuWidth = 214;
+    const menuHeight = 44;
+    let left = clientX - rect.left;
+    let top = clientY - rect.top - 52;
+    left = Math.max(8, Math.min(left, Math.max(8, wrap.clientWidth - menuWidth - 8)));
+    top = Math.max(8, Math.min(top, Math.max(8, wrap.clientHeight - menuHeight - 8)));
+    setMobileTermLongPressMenu({ left, top });
+  }, []);
+
   const getTermViewport = useCallback((): HTMLElement | null => {
     const root = termDivRef.current;
     if (!root) return null;
     return root.querySelector(".xterm-viewport") as HTMLElement | null;
   }, []);
 
+  const getMobileTermTouchCell = useCallback((clientX: number, clientY: number): MobileTermCell | null => {
+    const root = termDivRef.current;
+    const term = termRef.current;
+    if (!root || !term || term.cols <= 0 || term.rows <= 0) return null;
+    const screen = root.querySelector(".xterm-screen") as HTMLElement | null;
+    if (!screen) return null;
+    const rect = screen.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    const relX = Math.max(0, Math.min(clientX - rect.left, Math.max(0, rect.width - 1)));
+    const relY = Math.max(0, Math.min(clientY - rect.top, Math.max(0, rect.height - 1)));
+    const cellW = rect.width / term.cols;
+    const cellH = rect.height / term.rows;
+    const col = Math.max(0, Math.min(term.cols - 1, Math.floor(relX / Math.max(1, cellW))));
+    const viewRow = Math.max(0, Math.min(term.rows - 1, Math.floor(relY / Math.max(1, cellH))));
+    const row = (term.buffer.active.viewportY ?? 0) + viewRow;
+    return { col, row };
+  }, []);
+
+  const updateMobileTermSelection = useCallback((current: MobileTermCell) => {
+    const term = termRef.current;
+    const anchor = mobileTermSelectionAnchorRef.current;
+    if (!term || !anchor) return;
+    let start = anchor;
+    let end = current;
+    if (end.row < start.row || (end.row === start.row && end.col < start.col)) {
+      start = current;
+      end = anchor;
+    }
+    const rowsSpan = Math.max(0, end.row - start.row);
+    const length = Math.max(1, rowsSpan * term.cols + (end.col - start.col + 1));
+    try {
+      term.select(start.col, start.row, length);
+    } catch {}
+  }, []);
+
+  const handleMobileTermCopySelection = useCallback(async () => {
+    const selected = termRef.current?.getSelection() ?? "";
+    if (!selected) {
+      setStatus(t("[提示] 未选中文本，请先拖动选择"));
+      return;
+    }
+    const ok = await writeClipboardText(selected);
+    if (!ok) {
+      setStatus(t("[错误] 复制失败，请重试"));
+      return;
+    }
+    setStatus(t("[成功] 已复制终端选中内容"));
+    closeMobileTermLongPressMenu(true);
+  }, [closeMobileTermLongPressMenu, t, writeClipboardText]);
+
+  const handleMobileTermPasteClipboard = useCallback(async () => {
+    let text = "";
+    if (navigator.clipboard?.readText) {
+      try {
+        text = await navigator.clipboard.readText();
+      } catch {
+        text = "";
+      }
+    }
+    if (!text) {
+      setPasteModalText("");
+      setPasteModalOpen(true);
+      setTimeout(() => pasteModalTextareaRef.current?.focus(), 80);
+      setStatus(t("[提示] 无法读取系统剪贴板，请使用“粘贴命令”"));
+      closeMobileTermLongPressMenu(false);
+      return;
+    }
+    if (sendTermRawInput(text)) {
+      setStatus(t("[成功] 已从剪贴板粘贴到终端"));
+    }
+    closeMobileTermLongPressMenu(true);
+  }, [closeMobileTermLongPressMenu, sendTermRawInput, t]);
+
   const handleTermTouchStartCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     if (!isMobile) return;
     const viewport = getTermViewport();
     const touch = e.touches[0];
     if (!viewport || !touch) return;
+
+    closeMobileTermLongPressMenu(true);
+    clearMobileTermLongPressTimer();
+
     mobileTermTouchStateRef.current = {
       startX: touch.clientX,
       startY: touch.clientY,
       startScrollTop: viewport.scrollTop,
       startScrollLeft: viewport.scrollLeft,
+      latestX: touch.clientX,
+      latestY: touch.clientY,
+      longPressed: false,
       moved: false,
     };
+    mobileTermLongPressTimerRef.current = window.setTimeout(() => {
+      const state = mobileTermTouchStateRef.current;
+      if (!state || state.moved) return;
+      state.longPressed = true;
+
+      mobileKeyboardGateRef.current = false;
+      if (mobileKeyboardGateTimerRef.current !== null) {
+        window.clearTimeout(mobileKeyboardGateTimerRef.current);
+        mobileKeyboardGateTimerRef.current = null;
+      }
+      setMobileKeyboardOpen(false);
+      termRef.current?.blur();
+
+      const anchor = getMobileTermTouchCell(state.latestX, state.latestY);
+      if (anchor) {
+        mobileTermSelectionAnchorRef.current = anchor;
+        updateMobileTermSelection(anchor);
+      } else {
+        mobileTermSelectionAnchorRef.current = null;
+      }
+      openMobileTermLongPressMenu(state.latestX, state.latestY);
+      setStatus(t("[提示] 已进入复制模式，拖动手指选择文本后点击复制"));
+    }, MOBILE_TERM_LONG_PRESS_MS);
+
     e.preventDefault();
     e.stopPropagation();
-  }, [getTermViewport, isMobile]);
+  }, [
+    clearMobileTermLongPressTimer,
+    closeMobileTermLongPressMenu,
+    getMobileTermTouchCell,
+    getTermViewport,
+    isMobile,
+    openMobileTermLongPressMenu,
+    t,
+    updateMobileTermSelection,
+  ]);
 
   const handleTermTouchMoveCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     if (!isMobile) return;
@@ -1712,27 +1907,45 @@ export function App() {
     const viewport = getTermViewport();
     const touch = e.touches[0];
     if (!state || !viewport || !touch) return;
+
+    state.latestX = touch.clientX;
+    state.latestY = touch.clientY;
     const dx = touch.clientX - state.startX;
     const dy = touch.clientY - state.startY;
     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) state.moved = true;
+
+    if (!state.longPressed && (Math.abs(dx) > MOBILE_TERM_LONG_PRESS_MOVE_CANCEL_PX || Math.abs(dy) > MOBILE_TERM_LONG_PRESS_MOVE_CANCEL_PX)) {
+      clearMobileTermLongPressTimer();
+    }
+
+    if (state.longPressed) {
+      const cell = getMobileTermTouchCell(touch.clientX, touch.clientY);
+      if (cell) updateMobileTermSelection(cell);
+      e.preventDefault();
+      e.stopPropagation();
+      termRef.current?.blur();
+      return;
+    }
+
     // Keep scroll direction natural: content follows finger movement.
     viewport.scrollLeft = state.startScrollLeft - dx;
     viewport.scrollTop = state.startScrollTop - dy;
     e.preventDefault();
     e.stopPropagation();
     termRef.current?.blur();
-  }, [getTermViewport, isMobile]);
+  }, [clearMobileTermLongPressTimer, getMobileTermTouchCell, getTermViewport, isMobile, updateMobileTermSelection]);
 
   const handleTermTouchEndCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     if (!isMobile) return;
     const state = mobileTermTouchStateRef.current;
     mobileTermTouchStateRef.current = null;
-    if (state?.moved) {
+    clearMobileTermLongPressTimer();
+    if (state?.moved || state?.longPressed) {
       e.preventDefault();
       e.stopPropagation();
     }
     termRef.current?.blur();
-  }, [isMobile]);
+  }, [clearMobileTermLongPressTimer, isMobile]);
 
   const getTermHelperTextarea = useCallback((): HTMLTextAreaElement | null => {
     const root = termDivRef.current;
@@ -1784,6 +1997,18 @@ export function App() {
       openMobileKeyboard();
     }
   }, [closeMobileKeyboard, getTermHelperTextarea, isMobile, mobileKeyboardOpen, openMobileKeyboard]);
+
+  useEffect(() => {
+    return () => {
+      clearMobileTermLongPressTimer();
+    };
+  }, [clearMobileTermLongPressTimer]);
+
+  useEffect(() => {
+    if (!isMobile || !terminalVisible || termMode === "cursor") {
+      closeMobileTermLongPressMenu(true);
+    }
+  }, [closeMobileTermLongPressMenu, isMobile, termMode, terminalVisible]);
 
   const handleTermKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -4432,6 +4657,26 @@ export function App() {
                   e.stopPropagation();
                 }}
               />
+              {isMobile && termMode !== "cursor" && mobileTermLongPressMenu ? (
+                <div
+                  className="termLongPressMenu"
+                  style={{ left: mobileTermLongPressMenu.left, top: mobileTermLongPressMenu.top }}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                >
+                  <button type="button" className="termLongPressMenuBtn" onClick={() => void handleMobileTermCopySelection()}>
+                    {t("复制")}
+                  </button>
+                  <button type="button" className="termLongPressMenuBtn" onClick={() => void handleMobileTermPasteClipboard()}>
+                    {t("粘贴到终端")}
+                  </button>
+                  <button type="button" className="termLongPressMenuBtn" onClick={() => closeMobileTermLongPressMenu(false)}>
+                    {t("取消")}
+                  </button>
+                </div>
+              ) : null}
               {isMobile && terminalVisible && termMode !== "cursor" && mobileKeysVisible ? (
                 <div
                   className="termMobileControls"
@@ -4929,6 +5174,26 @@ export function App() {
                   e.stopPropagation();
                 }}
               />
+              {isMobile && termMode !== "cursor" && mobileTermLongPressMenu ? (
+                <div
+                  className="termLongPressMenu"
+                  style={{ left: mobileTermLongPressMenu.left, top: mobileTermLongPressMenu.top }}
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                >
+                  <button type="button" className="termLongPressMenuBtn" onClick={() => void handleMobileTermCopySelection()}>
+                    {t("复制")}
+                  </button>
+                  <button type="button" className="termLongPressMenuBtn" onClick={() => void handleMobileTermPasteClipboard()}>
+                    {t("粘贴到终端")}
+                  </button>
+                  <button type="button" className="termLongPressMenuBtn" onClick={() => closeMobileTermLongPressMenu(false)}>
+                    {t("取消")}
+                  </button>
+                </div>
+              ) : null}
               {isMobile && terminalVisible && termMode !== "cursor" && mobileKeysVisible ? (
                 <div
                   className="termMobileControls"
