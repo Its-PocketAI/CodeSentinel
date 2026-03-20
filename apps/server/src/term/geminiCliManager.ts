@@ -202,7 +202,7 @@ export class GeminiCliManager {
     this.opts.send({
       t: "term.data",
       sessionId,
-      data: `[gemini] PTY 已启动，等待 gemini 输出…\r\n`,
+      data: `[gemini] PTY started, waiting for gemini output...\r\n`,
     });
 
     term.onData((chunk: string) => {

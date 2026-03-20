@@ -20,7 +20,7 @@ const schemaPath = path.join(dataDir, "schema.sql");
 const outPath = path.join(dataDir, "chat_history.init.db");
 
 if (!fs.existsSync(schemaPath)) {
-  console.error("未找到 data/schema.sql，请先确保该文件存在。");
+  console.error("data/schema.sql not found. Ensure the file exists before running init-db.");
   process.exit(1);
 }
 
@@ -38,7 +38,7 @@ const db = new Database(outPath);
 try {
   db.pragma("journal_mode = WAL");
   db.exec(schemaSql);
-  console.log("已生成初始化数据库：", outPath);
+  console.log("Initialization database generated:", outPath);
 } finally {
   db.close();
 }

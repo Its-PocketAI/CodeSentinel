@@ -147,7 +147,7 @@ export class ClaudeCliManager {
     this.opts.send({
       t: "term.data",
       sessionId,
-      data: `[claude] PTY 已启动，等待 claude 输出…\r\n`,
+      data: `[claude] PTY started, waiting for claude output...\r\n`,
     });
 
     term.onData((chunk: string) => {

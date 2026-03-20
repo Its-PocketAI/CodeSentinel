@@ -202,7 +202,7 @@ export class KimiCliManager {
     this.opts.send({
       t: "term.data",
       sessionId,
-      data: `[kimi] PTY 已启动，等待 kimi 输出…\r\n`,
+      data: `[kimi] PTY started, waiting for kimi output...\r\n`,
     });
 
     term.onData((chunk: string) => {

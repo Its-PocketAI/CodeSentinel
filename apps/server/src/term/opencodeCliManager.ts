@@ -203,7 +203,7 @@ export class OpencodeCliManager {
     this.opts.send({
       t: "term.data",
       sessionId,
-      data: `[opencode] PTY 已启动，等待 opencode 输出…\r\n`,
+      data: `[opencode] PTY started, waiting for opencode output...\r\n`,
     });
 
     term.onData((chunk: string) => {

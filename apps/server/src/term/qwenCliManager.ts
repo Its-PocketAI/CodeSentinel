@@ -202,7 +202,7 @@ export class QwenCliManager {
     this.opts.send({
       t: "term.data",
       sessionId,
-      data: `[qwen] PTY 已启动，等待 qwen 输出…\r\n`,
+      data: `[qwen] PTY started, waiting for qwen output...\r\n`,
     });
 
     term.onData((chunk: string) => {

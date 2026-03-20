@@ -1247,7 +1247,7 @@ async function main() {
   });
 
   app.post("/api/setup/install", async (req, res) => {
-    if (!isLocalReq(req)) return res.status(403).json({ ok: false, error: "仅允许本机访问" });
+    if (!isLocalReq(req)) return res.status(403).json({ ok: false, error: "setup_local_only" });
     try {
       const tool = String((req.body as any)?.tool ?? "") as SetupInstallTool;
       if (tool !== "agent" && tool !== "rg" && tool !== "codex" && tool !== "claude" && tool !== "opencode" && tool !== "gemini" && tool !== "kimi" && tool !== "qwen") {
@@ -1321,7 +1321,7 @@ async function main() {
   });
 
   app.post("/api/setup/add-root", async (req, res) => {
-    if (!isLocalReq(req)) return res.status(403).json({ ok: false, error: "仅允许本机访问" });
+    if (!isLocalReq(req)) return res.status(403).json({ ok: false, error: "setup_local_only" });
     try {
       const rootRaw = String((req.body as any)?.root ?? "").trim();
       const setActive = Boolean((req.body as any)?.setActive ?? true);
@@ -2415,9 +2415,9 @@ async function main() {
 
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
-      console.error(`\n❌ 端口 ${port} 已被占用，后端启动失败。`);
-      console.error(`   请运行: pnpm dev:fresh  （会先释放 3989/3990 再启动）`);
-      console.error(`   或手动: netstat -ano | findstr :${port}  然后 taskkill /PID <PID> /F`);
+      console.error(`\n❌ Port ${port} is already in use. Backend startup failed.`);
+      console.error(`   Run: pnpm dev:fresh  (it will free 3989/3990 before restarting)`);
+      console.error(`   Or manually: netstat -ano | findstr :${port}  then taskkill /PID <PID> /F`);
     } else {
       console.error("Server error:", err);
     }

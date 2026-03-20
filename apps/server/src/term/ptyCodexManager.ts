@@ -169,7 +169,7 @@ export class PtyCodexManager {
     this.opts.send({
       t: "term.data",
       sessionId,
-      data: `[codex] PTY 已启动，等待 codex 输出…\r\n`,
+      data: `[codex] PTY started, waiting for codex output...\r\n`,
     });
 
     term.onData((chunk: string) => {
