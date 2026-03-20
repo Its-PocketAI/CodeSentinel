@@ -9,6 +9,7 @@
   <a href="#安装推荐">安装</a> ·
   <a href="#linux-manual-install">Linux 安装</a> ·
   <a href="#快速使用">快速使用</a> ·
+  <a href="#更新升级已部署实例">更新</a> ·
   <a href="#开发者模式源码启动">开发者模式</a> ·
   <a href="#一键部署installsh--bash">一键部署</a> ·
   <a href="#terminal-run-user-linux">运行用户</a>
@@ -129,6 +130,47 @@ cd ~/CodeSentinel
 
 ```bash
 ./run/prod-stop.sh
+```
+
+## 更新（升级已部署实例）
+
+推荐使用更新脚本，一条命令完成 `git pull`、依赖同步与服务重启。
+
+Linux / macOS / WSL：
+
+```bash
+cd /opt/data/CodeSentinal
+./run/update.sh
+```
+
+Windows PowerShell：
+
+```powershell
+cd C:\CodeSentinel
+.\run\update.ps1
+```
+
+脚本执行内容：
+- 检查 `git` / `pnpm` 是否可用
+- 检查仓库是否干净（有本地未提交变更会直接退出）
+- 停止生产服务
+- 拉取最新代码（`git pull --ff-only`）
+- 执行 `pnpm install --frozen-lockfile`
+- 重启生产服务
+
+可选环境变量：
+- `CODESENTINEL_UPDATE_REMOTE`（默认 `origin`）
+- `CODESENTINEL_UPDATE_BRANCH`（默认当前分支，回退 `main`）
+- `CODESENTINEL_UPDATE_ALLOW_DIRTY=1`（跳过“仓库必须干净”检查）
+
+如果你不想用脚本，也可手动执行：
+
+```bash
+cd /opt/data/CodeSentinal
+./run/prod-stop.sh
+git pull --ff-only
+pnpm install --frozen-lockfile
+./run/prod-start.sh
 ```
 
 ## 开发者模式（源码启动）
@@ -285,6 +327,7 @@ PowerShell 脚本：
 .\run\dev-stop.ps1
 .\run\prod-start.ps1
 .\run\prod-stop.ps1
+.\run\update.ps1
 ```
 
 Linux 脚本入口：
@@ -294,6 +337,7 @@ Linux 脚本入口：
 ./run/dev-stop.sh
 ./run/prod-start.sh
 ./run/prod-stop.sh
+./run/update.sh
 ```
 
 ## 反向代理（可选）

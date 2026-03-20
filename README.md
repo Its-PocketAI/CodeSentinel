@@ -9,6 +9,7 @@
   <a href="#install-recommended">Install</a> ·
   <a href="#linux-manual-install">Linux Install</a> ·
   <a href="#quick-start">Quick Start</a> ·
+  <a href="#update-upgrade-existing-instance">Update</a> ·
   <a href="#developer-mode-from-source">Developer Mode</a> ·
   <a href="#one-click-deploy-installsh--bash">One-Click Deploy</a> ·
   <a href="#terminal-run-user-linux">Run-As User</a>
@@ -129,6 +130,47 @@ Stop service:
 
 ```bash
 ./run/prod-stop.sh
+```
+
+## Update (Upgrade Existing Instance)
+
+Use the update scripts to perform `git pull`, dependency sync, and restart in one command.
+
+Linux / macOS / WSL:
+
+```bash
+cd /opt/data/CodeSentinal
+./run/update.sh
+```
+
+Windows PowerShell:
+
+```powershell
+cd C:\CodeSentinel
+.\run\update.ps1
+```
+
+What the update script does:
+- Checks `git` / `pnpm` availability.
+- Verifies the repo is clean (fails fast if there are local uncommitted changes).
+- Stops production service.
+- Fetches and pulls latest code (`git pull --ff-only`).
+- Runs `pnpm install --frozen-lockfile`.
+- Restarts production service.
+
+Optional update env vars:
+- `CODESENTINEL_UPDATE_REMOTE` (default `origin`)
+- `CODESENTINEL_UPDATE_BRANCH` (default current branch, fallback `main`)
+- `CODESENTINEL_UPDATE_ALLOW_DIRTY=1` (skip clean-working-tree check)
+
+Manual commands (if you prefer no script):
+
+```bash
+cd /opt/data/CodeSentinal
+./run/prod-stop.sh
+git pull --ff-only
+pnpm install --frozen-lockfile
+./run/prod-start.sh
 ```
 
 ## Developer Mode (From Source)
@@ -287,6 +329,7 @@ PowerShell scripts are included:
 .\run\dev-stop.ps1
 .\run\prod-start.ps1
 .\run\prod-stop.ps1
+.\run\update.ps1
 ```
 
 For Linux scripts, use:
@@ -296,6 +339,7 @@ For Linux scripts, use:
 ./run/dev-stop.sh
 ./run/prod-start.sh
 ./run/prod-stop.sh
+./run/update.sh
 ```
 
 ## Reverse Proxy (Optional)
