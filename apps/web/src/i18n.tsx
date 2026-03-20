@@ -89,8 +89,8 @@ const EN: Record<string, string> = {
   "以下工具用于 Cursor Chat、Codex/Claude/OpenCode/Gemini/Kimi/Qwen 终端等功能。请根据当前检测状态，在终端中按下方说明手动安装。未安装也可跳过，但相关功能将无法使用。":
     "These tools enable Cursor Chat and Codex/Claude/OpenCode/Gemini/Kimi/Qwen terminals. Install them manually in a terminal as instructed. You may skip, but related features will be unavailable.",
   "安装脚本（可选）": "Installer (optional)",
-  "可在终端执行以下一键命令。国内网络建议使用 --for-user zh。":
-    "Run one-line installer commands in terminal. For mainland networks, use --for-user zh.",
+  "可在终端执行以下一键命令。国内网络建议使用 --for-user=zh。":
+    "Run one-line installer commands in terminal. For mainland networks, use --for-user=zh.",
   "国际默认：": "Global default:",
   "国内加速：": "Mainland China optimized:",
   "安装方法": "Install",

@@ -229,7 +229,7 @@ export function SetupPage() {
   const canGoNextStep2 = true;
   const showPrev = currentStep > 1;
   const installCmdGlobal = "curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash";
-  const installCmdZh = "curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash -s -- --for-user zh";
+  const installCmdZh = "curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash -s -- --for-user=zh";
 
   return (
     <div className="setupPage">
@@ -319,7 +319,7 @@ export function SetupPage() {
                 <p>{t("以下工具用于 Cursor Chat、Codex/Claude/OpenCode/Gemini/Kimi/Qwen 终端等功能。请根据当前检测状态，在终端中按下方说明手动安装。未安装也可跳过，但相关功能将无法使用。")}</p>
                 <div className="setupManualBlock">
                   <span className="setupManualLabel">{t("安装脚本（可选）")}</span>
-                  <p className="setupHint">{t("可在终端执行以下一键命令。国内网络建议使用 --for-user zh。")}</p>
+                  <p className="setupHint">{t("可在终端执行以下一键命令。国内网络建议使用 --for-user=zh。")}</p>
                   <p className="setupHint">{t("国际默认：")}</p>
                   <div className="setupCode"><code>{installCmdGlobal}</code></div>
                   <p className="setupHint">{t("国内加速：")}</p>

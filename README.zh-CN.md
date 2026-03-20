@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | \
-  bash -s -- --for-user zh
+  bash -s -- --for-user=zh
 ```
 
 该模式会在安装阶段临时启用 npm/pnpm 国内镜像，不会改写你全局的 npm 配置。
@@ -164,7 +164,7 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | \
-  CODESENTINEL_DIR=/opt/data/CodeSentinal bash -s -- --for-user zh
+  CODESENTINEL_DIR=/opt/data/CodeSentinal bash -s -- --for-user=zh
 ```
 
 后续运维：

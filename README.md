@@ -36,7 +36,7 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | \
-  bash -s -- --for-user zh
+  bash -s -- --for-user=zh
 ```
 
 This profile enables a mainland-friendly npm/pnpm mirror during install only (it does not overwrite your global npm config).
@@ -164,7 +164,7 @@ Mainland China optimized bootstrap:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | \
-  CODESENTINEL_DIR=/opt/data/CodeSentinal bash -s -- --for-user zh
+  CODESENTINEL_DIR=/opt/data/CodeSentinal bash -s -- --for-user=zh
 ```
 
 Then use:

@@ -4,7 +4,7 @@ set -euo pipefail
 # CodeSentinel one-line installer
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash
-#   curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash -s -- --for-user zh
+#   curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash -s -- --for-user=zh
 #
 # Optional env vars:
 #   CODESENTINEL_REPO   (default: https://github.com/Its-PocketAI/CodeSentinel.git)
@@ -109,7 +109,7 @@ Profiles:
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash -s -- --for-user zh
+  curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash -s -- --for-user=zh
 
 Environment:
   CODESENTINEL_FOR_USER=zh
