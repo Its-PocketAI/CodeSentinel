@@ -1273,6 +1273,7 @@ export function App() {
   const mobileTermTouchStateRef = useRef<MobileTermTouchState | null>(null);
   const mobileTermLongPressTimerRef = useRef<number | null>(null);
   const mobileTermSelectionAnchorRef = useRef<MobileTermCell | null>(null);
+  const mobileTermMenuHiddenDuringDragRef = useRef(false);
   const [mobileTermLongPressMenu, setMobileTermLongPressMenu] = useState<MobileTermLongPressMenuState | null>(null);
   const lastMobileControlsHRef = useRef<number>(-1);
   const mobileSidebarToggleRef = useRef<HTMLButtonElement | null>(null);
@@ -1748,6 +1749,7 @@ export function App() {
     clearMobileTermLongPressTimer();
     setMobileTermLongPressMenu(null);
     mobileTermSelectionAnchorRef.current = null;
+    mobileTermMenuHiddenDuringDragRef.current = false;
     if (clearSelection) {
       try {
         termRef.current?.clearSelection();
@@ -1761,12 +1763,22 @@ export function App() {
     const rect = wrap.getBoundingClientRect();
     const menuWidth = 214;
     const menuHeight = 44;
-    let left = clientX - rect.left;
-    let top = clientY - rect.top - 52;
+    const controlsHeight = termMobileControlsRef.current?.offsetHeight ?? 0;
+    const controlsVisible = isMobile && terminalVisible && termMode !== "cursor" && mobileKeysVisible && controlsHeight > 0;
+    const reservedBottom = controlsVisible ? controlsHeight + 8 : 8;
+    const maxTop = Math.max(8, wrap.clientHeight - reservedBottom - menuHeight);
+
+    // Prefer placing action menu below the selected text/finger.
+    let left = clientX - rect.left - menuWidth / 2;
+    let top = clientY - rect.top + 14;
+    if (top > maxTop) {
+      top = clientY - rect.top - menuHeight - 14;
+    }
     left = Math.max(8, Math.min(left, Math.max(8, wrap.clientWidth - menuWidth - 8)));
-    top = Math.max(8, Math.min(top, Math.max(8, wrap.clientHeight - menuHeight - 8)));
+    top = Math.max(8, Math.min(top, maxTop));
     setMobileTermLongPressMenu({ left, top });
-  }, []);
+    mobileTermMenuHiddenDuringDragRef.current = false;
+  }, [isMobile, mobileKeysVisible, termMode, terminalVisible]);
 
   const getTermViewport = useCallback((): HTMLElement | null => {
     const root = termDivRef.current;
@@ -1856,6 +1868,7 @@ export function App() {
 
     closeMobileTermLongPressMenu(true);
     clearMobileTermLongPressTimer();
+    mobileTermMenuHiddenDuringDragRef.current = false;
 
     mobileTermTouchStateRef.current = {
       startX: touch.clientX,
@@ -1922,6 +1935,10 @@ export function App() {
     }
 
     if (state.longPressed) {
+      if (!mobileTermMenuHiddenDuringDragRef.current) {
+        setMobileTermLongPressMenu(null);
+        mobileTermMenuHiddenDuringDragRef.current = true;
+      }
       const cell = getMobileTermTouchCell(touch.clientX, touch.clientY);
       if (cell) updateMobileTermSelection(cell);
       e.preventDefault();
@@ -1943,12 +1960,16 @@ export function App() {
     const state = mobileTermTouchStateRef.current;
     mobileTermTouchStateRef.current = null;
     clearMobileTermLongPressTimer();
+    if (state?.longPressed) {
+      openMobileTermLongPressMenu(state.latestX, state.latestY);
+      mobileTermMenuHiddenDuringDragRef.current = false;
+    }
     if (state?.moved || state?.longPressed) {
       e.preventDefault();
       e.stopPropagation();
     }
     termRef.current?.blur();
-  }, [clearMobileTermLongPressTimer, isMobile]);
+  }, [clearMobileTermLongPressTimer, isMobile, openMobileTermLongPressMenu]);
 
   const getTermHelperTextarea = useCallback((): HTMLTextAreaElement | null => {
     const root = termDivRef.current;
