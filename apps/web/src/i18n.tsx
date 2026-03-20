@@ -74,6 +74,10 @@ const EN: Record<string, string> = {
   "已添加 {added} 个，失败 {failed} 个：{detail}": "Added {added}, failed {failed}: {detail}",
   "添加失败": "Add failed",
   "请求失败": "Request failed",
+  "仅允许本机访问（请在服务端本机操作）": "Local setup only. Run this step on the server host.",
+  "路径不正确，请输入有效的绝对目录路径": "Invalid path. Enter a valid absolute directory path.",
+  "路径不存在，请检查后重试": "Path not found. Check and try again.",
+  "路径无权限访问，请更换目录或调整权限": "Permission denied for this path. Choose another directory or adjust permissions.",
   "第二步：安装 Cursor / Codex / Claude / OpenCode / Gemini / Kimi / Qwen（手动安装）": "Step 2: Install Cursor / Codex / Claude / OpenCode / Gemini / Kimi / Qwen (Manual)",
   "以下工具用于 Cursor Chat、Codex/Claude/OpenCode/Gemini/Kimi/Qwen 终端等功能。请根据当前检测状态，在终端中按下方说明手动安装。未安装也可跳过，但相关功能将无法使用。":
     "These tools enable Cursor Chat and Codex/Claude/OpenCode/Gemini/Kimi/Qwen terminals. Install them manually in a terminal as instructed. You may skip, but related features will be unavailable.",

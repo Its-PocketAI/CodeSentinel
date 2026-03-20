@@ -37,6 +37,19 @@ export function SetupPage() {
   const [dbInitDone, setDbInitDone] = useState(false);
   const [completeLoading, setCompleteLoading] = useState(false);
 
+  const mapSetupError = useCallback(
+    (raw: string) => {
+      const msg = String(raw || "").trim();
+      if (!msg) return t("请求失败");
+      if (msg === "仅允许本机访问" || msg === "setup_local_only") return t("仅允许本机访问（请在服务端本机操作）");
+      if (msg === "No valid roots" || msg === "invalid_root_path") return t("路径不正确，请输入有效的绝对目录路径");
+      if (msg.includes("ENOENT") || msg === "root_not_found") return t("路径不存在，请检查后重试");
+      if (msg.includes("EACCES") || msg.includes("EPERM") || msg === "root_no_permission") return t("路径无权限访问，请更换目录或调整权限");
+      return msg;
+    },
+    [t],
+  );
+
   const fetchCheck = useCallback(async () => {
     setLoading(true);
     setError("");
@@ -46,16 +59,16 @@ export function SetupPage() {
       if (data?.ok) {
         setSetupData(data);
       } else {
-        setError(data?.error ?? `HTTP ${r.status}`);
+        setError(mapSetupError(data?.error ?? `HTTP ${r.status}`));
         setSetupData(null);
       }
     } catch (e: any) {
-      setError(e?.message ?? t("无法连接后端，请确认服务已启动（如 pnpm dev）"));
+      setError(mapSetupError(e?.message ?? t("无法连接后端，请确认服务已启动（如 pnpm dev）")));
       setSetupData(null);
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [mapSetupError, t]);
 
   useEffect(() => {
     fetchCheck();
@@ -104,10 +117,10 @@ export function SetupPage() {
             setSetupData((prev) => (prev ? { ...prev, roots: data.roots } : null));
             added.push(path);
           } else {
-            failed.push(`${path}: ${data?.error ?? t("添加失败")}`);
+            failed.push(`${path}: ${mapSetupError(data?.error ?? t("添加失败"))}`);
           }
         } catch (e: any) {
-          failed.push(`${path}: ${e?.message ?? t("请求失败")}`);
+          failed.push(`${path}: ${mapSetupError(e?.message ?? t("请求失败"))}`);
         }
       }
       if (failed.length === 0) {
@@ -137,10 +150,10 @@ export function SetupPage() {
         setDbInitDone(true);
         setSetupData((prev) => (prev ? { ...prev, dbReady: true } : prev));
       } else {
-        setInstallResult({ tool: "db", ok: false, msg: data?.error ?? t("初始化失败") });
+        setInstallResult({ tool: "db", ok: false, msg: mapSetupError(data?.error ?? t("初始化失败")) });
       }
     } catch (e: any) {
-      setInstallResult({ tool: "db", ok: false, msg: e?.message ?? t("请求失败") });
+      setInstallResult({ tool: "db", ok: false, msg: mapSetupError(e?.message ?? t("请求失败")) });
     } finally {
       setDbInitLoading(false);
     }
@@ -154,10 +167,10 @@ export function SetupPage() {
       if (data?.ok) {
         window.location.hash = "#/";
       } else {
-        setInstallResult({ tool: "complete", ok: false, msg: data?.error ?? t("完成失败") });
+        setInstallResult({ tool: "complete", ok: false, msg: mapSetupError(data?.error ?? t("完成失败")) });
       }
     } catch (e: any) {
-      setInstallResult({ tool: "complete", ok: false, msg: e?.message ?? t("请求失败") });
+      setInstallResult({ tool: "complete", ok: false, msg: mapSetupError(e?.message ?? t("请求失败")) });
     } finally {
       setCompleteLoading(false);
     }
