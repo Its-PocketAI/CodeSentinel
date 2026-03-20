@@ -226,7 +226,15 @@ cp config/config.example.json config/config.json
 - `limits.termSessionIdleHours`（`1..168`，默认 `12`）
 - `tooling.bins.*`、`tooling.checkArgs.*`
 - `defaultProjectUser`、`projectUsers[]`（Linux 专属用户模型）
-- `roots`：默认是路径列表模式；可写入 `"all"` 表示允许访问当前运行用户权限范围内的任意路径。
+- `roots`（位于 `config/config.json` 或 `config/roots.local.json`）：默认是目录列表模式；可写入 `"all"` 表示允许访问当前运行用户权限范围内的任意路径。
+
+目录列表示例：
+
+```json
+{
+  "roots": ["/home/codesentinel", "/opt/data/projects"]
+}
+```
 
 `roots=all` 示例：
 

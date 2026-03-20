@@ -273,8 +273,9 @@ export function SetupPage() {
               <>
                 <h2>{t("第一步：选择根目录")}</h2>
                 <p>{t("添加允许在 CodeSentinel（盯码侠）中访问的根目录（至少一个）。每行一个路径，可一次添加多个。")}</p>
-                <p className="setupHint">{t("支持输入 all：允许访问当前运行用户权限范围内的任意路径。")}</p>
-                {rootsAllowAll && <p className="setupStatus setupStatusOk">✓ {t("当前为 all 模式（全路径访问，受运行用户权限限制）")}</p>}
+                <p className="setupHint">{t("访问范围由配置文件 roots 参数控制（config/config.json 或 config/roots.local.json）。")}</p>
+                <p className="setupHint">{t("roots 可填写目录列表；填写 all 表示允许访问当前运行用户权限范围内的任意路径。")}</p>
+                {rootsAllowAll && <p className="setupStatus setupStatusOk">✓ {t("当前 roots=all（访问范围受运行用户系统权限限制）")}</p>}
                 {roots.length > 0 && (
                   <ul className="setupRootList">
                     {roots.map((r) => (

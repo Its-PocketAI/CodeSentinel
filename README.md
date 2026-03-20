@@ -227,7 +227,15 @@ Important fields:
 - `limits.termSessionIdleHours` (`1..168`, default `12`)
 - `tooling.bins.*` and `tooling.checkArgs.*`
 - `defaultProjectUser`, `projectUsers[]` (Linux run-as model)
-- `roots`: list mode by default; set `"all"` to allow any path accessible to the runtime user.
+- `roots` (`config/config.json` or `config/roots.local.json`): directory-list mode by default; set `"all"` to allow any path accessible to the runtime user.
+
+Directory-list example:
+
+```json
+{
+  "roots": ["/home/codesentinel", "/opt/data/projects"]
+}
+```
 
 `roots=all` examples:
 

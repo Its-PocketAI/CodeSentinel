@@ -79,10 +79,12 @@ const EN: Record<string, string> = {
   "路径不在允许范围内，请检查 roots 配置": "Path is outside allowed scope. Check your roots configuration.",
   "路径不存在，请检查后重试": "Path not found. Check and try again.",
   "路径无权限访问，请更换目录或调整权限": "Permission denied for this path. Choose another directory or adjust permissions.",
-  "支持输入 all：允许访问当前运行用户权限范围内的任意路径。":
-    "You can input all to allow any path accessible by the current runtime user.",
-  "当前为 all 模式（全路径访问，受运行用户权限限制）":
-    "all mode enabled (full-path access, limited by runtime user permissions)",
+  "访问范围由配置文件 roots 参数控制（config/config.json 或 config/roots.local.json）。":
+    "Access scope is controlled by the roots parameter in config/config.json or config/roots.local.json.",
+  "roots 可填写目录列表；填写 all 表示允许访问当前运行用户权限范围内的任意路径。":
+    "roots accepts directory lists; set all to allow any path accessible by the current runtime user.",
+  "当前 roots=all（访问范围受运行用户系统权限限制）":
+    "roots=all is active (access is limited by runtime user system permissions)",
   "第二步：安装 Cursor / Codex / Claude / OpenCode / Gemini / Kimi / Qwen（手动安装）": "Step 2: Install Cursor / Codex / Claude / OpenCode / Gemini / Kimi / Qwen (Manual)",
   "以下工具用于 Cursor Chat、Codex/Claude/OpenCode/Gemini/Kimi/Qwen 终端等功能。请根据当前检测状态，在终端中按下方说明手动安装。未安装也可跳过，但相关功能将无法使用。":
     "These tools enable Cursor Chat and Codex/Claude/OpenCode/Gemini/Kimi/Qwen terminals. Install them manually in a terminal as instructed. You may skip, but related features will be unavailable.",
