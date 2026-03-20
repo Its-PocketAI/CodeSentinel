@@ -383,6 +383,16 @@ export function attachTermWs(opts: {
           if (!sessionId) return fail("term.attach", "Missing sessionId");
           const meta = sessionMeta.get(sessionId);
           if (!meta) return fail("term.attach", "Session not found");
+          if (meta.mode === "native" || meta.mode === "restricted-pty") {
+            const owner = sessionOwners.get(sessionId);
+            if (owner) {
+              try {
+                owner.manager.close(sessionId);
+              } catch {}
+            }
+            cleanupSession(sessionId);
+            return fail("term.attach", "Legacy restricted session is no longer supported. Please create a new session.");
+          }
           attachSession(ws, sessionId);
           touchSession(sessionId);
           send(ws, { t: "term.attach.resp", reqId, ok: true, sessionId, cwd: meta.cwd, mode: meta.mode });

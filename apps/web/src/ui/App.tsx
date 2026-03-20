@@ -351,6 +351,10 @@ function listToText(list: string[]): string {
   return list.join("\n");
 }
 
+function isLegacyRestrictedSessionMode(mode?: string | null) {
+  return mode === "native" || mode === "restricted-pty";
+}
+
 function normalizeUiState(input: UiState | null | undefined): UiState {
   const raw = input ?? ({} as UiState);
   const pick = <T extends string>(val: unknown, allowed: T[], fallback: T): T =>
@@ -1368,7 +1372,12 @@ export function App() {
       const res = await apiFetch("/api/term/sessions?limit=80");
       const data = await res.json();
       if (!data?.ok || !Array.isArray(data.sessions)) return false;
-      const activeRows = data.sessions.filter((s: any) => s?.active && typeof s?.sessionId === "string");
+      const activeRows = data.sessions.filter(
+        (s: any) =>
+          s?.active &&
+          typeof s?.sessionId === "string" &&
+          !isLegacyRestrictedSessionMode(typeof s?.mode === "string" ? s.mode : ""),
+      );
       if (activeRows.length === 0) return false;
 
       const target =
@@ -1420,6 +1429,13 @@ export function App() {
         });
         return;
       }
+      if (isLegacyRestrictedSessionMode(saved.mode)) {
+        clearSavedSession(saved.sessionId);
+        void recoverLatestActiveSession(termModeRef.current).finally(() => {
+          autoAttachPreparedRef.current = true;
+        });
+        return;
+      }
       pendingAttachRef.current = { sessionId: saved.sessionId, cwd: saved.cwd, mode: saved.mode, noFallback: true };
       const mapped = mapSessionMode(saved.mode);
       if (mapped.uiMode !== termModeRef.current) setTermMode(mapped.uiMode);
@@ -1437,6 +1453,11 @@ export function App() {
   }, [isMobile, mapSessionMode, recoverLatestActiveSession, terminalCwd]);
 
   const handleRestoreSession = useCallback((s: { sessionId: string; cwd?: string; mode?: string }) => {
+    if (isLegacyRestrictedSessionMode(s.mode)) {
+      setStatus(t("[提示] 会话已失效，请点击“新建”"));
+      clearSavedSession(s.sessionId);
+      return;
+    }
     pendingAttachRef.current = { sessionId: s.sessionId, cwd: s.cwd, mode: s.mode, noFallback: true };
     const mapped = mapSessionMode(s.mode);
     if (mapped.uiMode !== termModeRef.current) setTermMode(mapped.uiMode);
@@ -4228,9 +4249,6 @@ export function App() {
                     );
                   })}
                 </div>
-                {activeToolId === "command" ? (
-                  <span className="termBadge">{t("受限命令行")}</span>
-                ) : null}
                 <div className="row termHeaderActions" style={{ marginLeft: "auto" }}>
                   {termMode !== "cursor" && (
                     <>
@@ -4721,9 +4739,6 @@ export function App() {
                     );
                   })}
                 </div>
-                {activeToolId === "command" ? (
-                  <span className="termBadge">{t("受限命令行")}</span>
-                ) : null}
                 {termMode !== "cursor" && (
                   <div className="termHeaderActions">
                     <button
