@@ -1507,27 +1507,27 @@ input {
 .termSelectionHandle {
   position: absolute;
   z-index: 16;
-  width: 22px;
-  height: 34px;
-  transform: translate(-11px, -1px);
+  width: 28px;
+  height: 36px;
+  transform: translate(-14px, -1px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
   touch-action: none;
-  --handle-bar-x: 10px;
-  --handle-knob-x: 5px;
+  --handle-bar-x: 13px;
+  --handle-knob-x: 8px;
 }
 
 .termSelectionHandleStart {
-  /* iOS-like start handle: knob slightly on the left side of the anchor */
-  --handle-bar-x: 10px;
-  --handle-knob-x: 2px;
+  /* iOS-like start handle: knob on the outer-left side */
+  --handle-bar-x: 17px;
+  --handle-knob-x: 3px;
 }
 
 .termSelectionHandleEnd {
-  /* iOS-like end handle: knob slightly on the right side of the anchor */
-  --handle-bar-x: 10px;
-  --handle-knob-x: 8px;
+  /* iOS-like end handle: knob on the outer-right side */
+  --handle-bar-x: 9px;
+  --handle-knob-x: 13px;
 }
 
 .termSelectionHandleBar {
@@ -1550,6 +1550,23 @@ input {
   border-radius: 50%;
   background: color-mix(in srgb, var(--accent) 80%, #ffffff 20%);
   border: 1px solid color-mix(in srgb, var(--panel) 40%, #000 60%);
+}
+
+.termSelectionHandleKnob::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  width: 6px;
+  height: 2px;
+  background: color-mix(in srgb, var(--accent) 78%, #ffffff 22%);
+}
+
+.termSelectionHandleStart .termSelectionHandleKnob::before {
+  right: -6px;
+}
+
+.termSelectionHandleEnd .termSelectionHandleKnob::before {
+  left: -6px;
 }
 
 .termMobileControls {
