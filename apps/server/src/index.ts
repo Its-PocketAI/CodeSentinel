@@ -640,6 +640,22 @@ async function main() {
     console.warn("[config] roots=all enabled while server runs as root. This grants full filesystem access to API callers. Prefer running server as non-root.");
   }
   let guardRoots = rootsAllowAll ? [ROOTS_ALL_SENTINEL] : roots;
+  const normalizeRootsForAllMode = () => {
+    if (!rootsAllowAll) return;
+    const seen = new Set<string>();
+    const next: string[] = [];
+    const push = (v: string | undefined) => {
+      const s = String(v ?? "").trim();
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      next.push(s);
+    };
+    // Keep runtime user's home as the first default root in UI when roots=all.
+    push(defaultRoot);
+    for (const r of roots) push(r);
+    if (next.length > 0) roots = next;
+  };
+  normalizeRootsForAllMode();
   const validateRootPath = (inputPath: string) => validatePathInRoots(inputPath, guardRoots);
 
   // 不阻塞启动：在后台检测 Cursor Agent CLI，避免 checkAgentCli 卡住导致服务迟迟无法监听端口
@@ -1369,6 +1385,7 @@ async function main() {
         roots = [defaultRoot];
       }
       guardRoots = rootsAllowAll ? [ROOTS_ALL_SENTINEL] : roots;
+      normalizeRootsForAllMode();
 
       if (setActive) {
         try {
