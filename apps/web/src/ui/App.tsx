@@ -1851,21 +1851,38 @@ export function App() {
     const wrap = termAreaWrapRef.current;
     const root = termDivRef.current;
     const term = termRef.current;
-    const sel = mobileTermSelectionRef.current;
-    if (!wrap || !root || !term || !sel || term.cols <= 0 || term.rows <= 0) return null;
+    const fallbackSel = mobileTermSelectionRef.current;
+    if (!wrap || !root || !term || term.cols <= 0 || term.rows <= 0) return null;
     const screen = root.querySelector(".xterm-screen") as HTMLElement | null;
     if (!screen) return null;
+    let startCol = fallbackSel?.start.col ?? 0;
+    let startRow = fallbackSel?.start.row ?? 0;
+    let endEdgeCol = fallbackSel ? fallbackSel.end.col + 1 : startCol + 1;
+    let endEdgeRow = fallbackSel?.end.row ?? startRow;
+    try {
+      const pos = term.getSelectionPosition?.();
+      if (pos?.start && pos?.end) {
+        startCol = Number.isFinite(pos.start.x) ? pos.start.x : startCol;
+        startRow = Number.isFinite(pos.start.y) ? pos.start.y : startRow;
+        endEdgeCol = Number.isFinite(pos.end.x) ? pos.end.x : endEdgeCol;
+        endEdgeRow = Number.isFinite(pos.end.y) ? pos.end.y : endEdgeRow;
+      }
+    } catch {}
+
+    const hasSelection = term.hasSelection?.() ?? Boolean((term.getSelection?.() ?? "").length);
+    if (!hasSelection) return null;
+
     const screenRect = screen.getBoundingClientRect();
     const wrapRect = wrap.getBoundingClientRect();
     if (screenRect.width <= 0 || screenRect.height <= 0) return null;
     const cellW = screenRect.width / term.cols;
     const cellH = screenRect.height / term.rows;
-    const cell = handle === "start" ? sel.start : sel.end;
+    const row = handle === "start" ? startRow : endEdgeRow;
+    const edgeCol = handle === "start" ? startCol : endEdgeCol;
     const viewportY = term.buffer.active.viewportY ?? 0;
-    const viewRow = Math.max(0, Math.min(term.rows - 1, cell.row - viewportY));
-    const col = Math.max(0, Math.min(term.cols - 1, cell.col));
-    const edgeCol = handle === "start" ? col : col + 1;
-    const left = screenRect.left - wrapRect.left + edgeCol * cellW;
+    const viewRow = Math.max(0, Math.min(term.rows - 1, row - viewportY));
+    const col = Math.max(0, Math.min(term.cols, edgeCol));
+    const left = screenRect.left - wrapRect.left + col * cellW;
     const top = screenRect.top - wrapRect.top + (viewRow + 1) * cellH;
     return { left, top };
   }, []);

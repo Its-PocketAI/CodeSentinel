@@ -1506,10 +1506,10 @@ input {
 
 .termSelectionHandle {
   position: absolute;
-  z-index: 13;
-  width: 26px;
-  height: 30px;
-  transform: translate(-13px, -2px);
+  z-index: 16;
+  width: 22px;
+  height: 34px;
+  transform: translate(-11px, -1px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1518,20 +1518,20 @@ input {
 
 .termSelectionHandleBar {
   width: 2px;
-  height: 16px;
-  margin-top: 1px;
+  height: 18px;
+  margin-top: 0;
   border-radius: 1px;
-  background: color-mix(in srgb, var(--accent) 84%, #ffffff 16%);
+  background: color-mix(in srgb, var(--accent) 78%, #ffffff 22%);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--panel) 55%, transparent);
 }
 
 .termSelectionHandleKnob {
   position: absolute;
-  top: 16px;
-  width: 11px;
-  height: 11px;
+  top: 18px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 85%, #ffffff 15%);
+  background: color-mix(in srgb, var(--accent) 80%, #ffffff 20%);
   border: 1px solid color-mix(in srgb, var(--panel) 40%, #000 60%);
 }
 
