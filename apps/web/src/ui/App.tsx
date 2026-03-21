@@ -1246,6 +1246,8 @@ export function App() {
   const termRestoreLockSessionRef = useRef<string>("");
   const termRestoreLockActiveRef = useRef(false);
   const termInitedRef = useRef(false);
+  const termFollowOutputRef = useRef(true);
+  const termFollowScrollRafRef = useRef<number | null>(null);
 
   const logTerm = (..._args: any[]) => {};
   const termResizeObsRef = useRef<ResizeObserver | null>(null);
@@ -1788,6 +1790,35 @@ export function App() {
     if (!root) return null;
     return root.querySelector(".xterm-viewport") as HTMLElement | null;
   }, []);
+
+  const isTermViewportNearBottom = useCallback((viewport?: HTMLElement | null) => {
+    const vp = viewport ?? getTermViewport();
+    if (!vp) return true;
+    const distance = vp.scrollHeight - vp.clientHeight - vp.scrollTop;
+    return distance <= 24;
+  }, [getTermViewport]);
+
+  const queueTermScrollToBottom = useCallback(() => {
+    if (!termFollowOutputRef.current) return;
+    if (termFollowScrollRafRef.current !== null) return;
+    termFollowScrollRafRef.current = window.requestAnimationFrame(() => {
+      termFollowScrollRafRef.current = null;
+      const term = termRef.current;
+      const viewport = getTermViewport();
+      try {
+        term?.scrollToBottom();
+      } catch {}
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
+    });
+  }, [getTermViewport]);
+
+  const syncTermFollowFromViewport = useCallback(() => {
+    const next = isTermViewportNearBottom();
+    termFollowOutputRef.current = next;
+    return next;
+  }, [isTermViewportNearBottom]);
 
   const getMobileTermTouchCell = useCallback((clientX: number, clientY: number): MobileTermCell | null => {
     const root = termDivRef.current;
@@ -3443,6 +3474,11 @@ export function App() {
 
     termRef.current = term;
     fitRef.current = fit;
+    termFollowOutputRef.current = true;
+    if (termFollowScrollRafRef.current !== null) {
+      window.cancelAnimationFrame(termFollowScrollRafRef.current);
+      termFollowScrollRafRef.current = null;
+    }
 
     const client = new TermClient();
     termClientRef.current = client;
@@ -3530,7 +3566,9 @@ export function App() {
           if (termRestoreLockActiveRef.current && termRestoreLockSessionRef.current === sid) {
             return;
           }
+          syncTermFollowFromViewport();
           term.write(m.data);
+          queueTermScrollToBottom();
           logTerm("term.data", { sessionId: sid, bytes: m.data.length, head: m.data.slice(0, 24) });
           // Cursor Agent TUI sometimes only renders after resize. Nudge with resize only (Enter + resize
           // can cause full redraw and duplicate output in terminal).
@@ -3563,6 +3601,7 @@ export function App() {
       }
       if (m.t === "term.exit" && m.sessionId === termSessionIdRef.current) {
         const sessionMode = termSessionModeRef.current;
+        syncTermFollowFromViewport();
         if (termRestoreLockSessionRef.current === m.sessionId) {
           termRestoreLockActiveRef.current = false;
           termRestoreLockSessionRef.current = "";
@@ -3637,6 +3676,7 @@ export function App() {
           } catch {}
           term.write(`$ `);
         }
+        queueTermScrollToBottom();
       }
     };
 
@@ -3648,7 +3688,9 @@ export function App() {
         // Don't print a prompt here; prompts are managed per-session.
       })
       .catch((e) => {
+        syncTermFollowFromViewport();
         term.write(`\r\n${t("[WebSocket 错误] {msg}", { msg: e?.message ?? String(e) })}\r\n`);
+        queueTermScrollToBottom();
       });
 
     term.onData((data) => {
@@ -3669,7 +3711,48 @@ export function App() {
       // Intentionally do NOT dispose on tab switches; only mark disposed for connect() continuation.
       disposed = true;
     };
-  }, [isMobile, safeFitTerm, terminalVisible, termMode, sendTermInput]);
+  }, [isMobile, queueTermScrollToBottom, safeFitTerm, syncTermFollowFromViewport, terminalVisible, termMode, sendTermInput, t]);
+
+  useEffect(() => {
+    if (!terminalVisible) return;
+    if (termMode === "cursor") return;
+    if (!termRef.current) return;
+
+    let cleanupViewportScroll: (() => void) | null = null;
+    let viewportBindRaf = 0;
+    let viewportBindTimer = 0;
+
+    const bindViewportScroll = () => {
+      cleanupViewportScroll?.();
+      cleanupViewportScroll = null;
+      const viewport = getTermViewport();
+      if (!viewport) return false;
+      const syncFollowState = () => {
+        termFollowOutputRef.current = isTermViewportNearBottom(viewport);
+      };
+      syncFollowState();
+      viewport.addEventListener("scroll", syncFollowState, { passive: true });
+      cleanupViewportScroll = () => {
+        viewport.removeEventListener("scroll", syncFollowState);
+      };
+      return true;
+    };
+
+    viewportBindRaf = window.requestAnimationFrame(() => {
+      viewportBindRaf = 0;
+      if (bindViewportScroll()) return;
+      viewportBindTimer = window.setTimeout(() => {
+        viewportBindTimer = 0;
+        bindViewportScroll();
+      }, 80);
+    });
+
+    return () => {
+      if (viewportBindRaf) window.cancelAnimationFrame(viewportBindRaf);
+      if (viewportBindTimer) window.clearTimeout(viewportBindTimer);
+      cleanupViewportScroll?.();
+    };
+  }, [getTermViewport, isTermViewportNearBottom, terminalVisible, termMode]);
 
   // When switching to Codex/Restricted (including Cursor→Codex again), the xterm container may have been hidden.
   // Trigger fit + backend resize; multiple delayed fits so layout and renderer are ready.
@@ -3711,6 +3794,10 @@ export function App() {
   // Terminal cleanup (unmount only)
   useEffect(() => {
     return () => {
+      if (termFollowScrollRafRef.current !== null) {
+        window.cancelAnimationFrame(termFollowScrollRafRef.current);
+        termFollowScrollRafRef.current = null;
+      }
       try {
         termResizeObsRef.current?.disconnect();
       } catch {}
@@ -3775,6 +3862,7 @@ export function App() {
         termSessionIdRef.current = resp.sessionId;
         termSessionModeRef.current = mapped.sessionMode;
         termSessionIsPtyRef.current = mapped.isPty;
+        termFollowOutputRef.current = true;
         lastOpenKeyRef.current = buildOpenKey(sessionCwd, mapped.uiMode, mapped.cliMode);
         termCwdRef.current = sessionCwd;
 
@@ -3802,6 +3890,7 @@ export function App() {
         }, 2500);
         term.reset();
         fitAndResize();
+        queueTermScrollToBottom();
         try {
           await client.resize(resp.sessionId, term.cols, term.rows).catch(() => {});
           const ctrl = new AbortController();
@@ -3812,6 +3901,7 @@ export function App() {
               const payload = await snap.json();
               if (payload?.data) {
                 term.write(payload.data);
+                queueTermScrollToBottom();
               }
             }
           } finally {
@@ -3825,7 +3915,11 @@ export function App() {
           }
         }
         fitAndResize();
-        setTimeout(fitAndResize, 200);
+        queueTermScrollToBottom();
+        setTimeout(() => {
+          fitAndResize();
+          queueTermScrollToBottom();
+        }, 200);
         setStatus(t("[已恢复] {msg}", { msg: sessionCwd || resp.sessionId }));
         return { ok: true };
       } catch (e: any) {
@@ -3903,10 +3997,13 @@ export function App() {
         logTerm("actualMode", { actualMode });
         
         // Reset terminal when switching into codex/claude/opencode/cursor-cli/restricted to avoid mixing outputs.
+        termFollowOutputRef.current = true;
         if (uiMode === "codex" || uiMode === "claude" || uiMode === "opencode" || uiMode === "gemini" || uiMode === "kimi" || uiMode === "qwen" || uiMode === "cursor-cli" || uiMode === "restricted") {
           term.reset();
+          queueTermScrollToBottom();
         } else {
           term.write(`\r\n${t("[会话] 正在打开 {path}", { path: openCwd })}\r\n`);
+          queueTermScrollToBottom();
         }
 
         const resp = await client.open(openCwd, term.cols, term.rows, actualMode);
@@ -3942,6 +4039,7 @@ export function App() {
         if (buf?.length) {
           for (const d of buf) term.write(d);
           termPendingDataBufferRef.current.delete(resp.sessionId);
+          queueTermScrollToBottom();
         }
         termPendingDataBufferRef.current.clear();
         logTerm("open session ok", { sessionId: resp.sessionId, cwd: resp.cwd, mode: resp.mode });
@@ -3962,7 +4060,11 @@ export function App() {
         // Fit + resize after open (includes delayed retries for font/layout settling)
         logTerm("resize after open", { sessionId: resp.sessionId, cols: term.cols, rows: term.rows });
         fitAndResize();
-        setTimeout(fitAndResize, 200);
+        queueTermScrollToBottom();
+        setTimeout(() => {
+          fitAndResize();
+          queueTermScrollToBottom();
+        }, 200);
 
         // Flush any keystrokes typed while the session was opening.
         const pending = termPendingStdinRef.current;
@@ -3971,13 +4073,16 @@ export function App() {
           await client.stdin(resp.sessionId, pending).catch(() => {});
         }
 
-        if (!isPtySession && uiMode !== "codex" && uiMode !== "claude" && uiMode !== "opencode" && uiMode !== "gemini" && uiMode !== "kimi" && uiMode !== "qwen" && uiMode !== "cursor-cli") term.write("$ ");
+        if (!isPtySession && uiMode !== "codex" && uiMode !== "claude" && uiMode !== "opencode" && uiMode !== "gemini" && uiMode !== "kimi" && uiMode !== "qwen" && uiMode !== "cursor-cli") {
+          term.write("$ ");
+        }
+        queueTermScrollToBottom();
       } catch (e: any) {
         lastOpenKeyRef.current = "";
           setStatus(t("[错误] 终端: {msg}", { msg: e?.message ?? String(e) }));
       }
     })();
-  }, [terminalCwd, terminalVisible, termMode, cursorMode, cursorCliMode, restoreNonce, openNonce, buildOpenKey, mapSessionMode, ensureTermAttached, saveSessionForMode, fitAndResize, recoverLatestActiveSession, isMobile, showNoSessionHint, t]);
+  }, [terminalCwd, terminalVisible, termMode, cursorMode, cursorCliMode, restoreNonce, openNonce, buildOpenKey, mapSessionMode, ensureTermAttached, saveSessionForMode, fitAndResize, recoverLatestActiveSession, isMobile, queueTermScrollToBottom, showNoSessionHint, t]);
 
   const settingsTools = toolSettings.filter((t): t is UiToolSetting & { id: ToolId } => isToolId(t.id));
   const aiTools = settingsTools.filter((t) => t.id !== "command");
