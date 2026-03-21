@@ -66,10 +66,12 @@ type MobileTermTouchState = {
   startY: number;
   startScrollTop: number;
   startScrollLeft: number;
+  startCell: MobileTermCell | null;
   latestX: number;
   latestY: number;
   longPressed: boolean;
   moved: boolean;
+  cancelLongPress: boolean;
 };
 type ShortcutDocItem = { key: string; action: string };
 type ShortcutDoc = {
@@ -95,8 +97,8 @@ const TOOL_DEFS: { id: ToolId; label: string; desc: string }[] = [
 const DEFAULT_TOOL_SETTINGS: UiToolSetting[] = TOOL_DEFS.map((t) => ({ id: t.id, enabled: true }));
 const LARGE_FILE_THRESHOLD_BYTES = 10 * 1024 * 1024;
 const LARGE_FILE_HARD_LIMIT_BYTES = 50 * 1024 * 1024;
-const MOBILE_TERM_LONG_PRESS_MS = 620;
-const MOBILE_TERM_LONG_PRESS_MOVE_CANCEL_PX = 10;
+const MOBILE_TERM_LONG_PRESS_MS = 1000;
+const MOBILE_TERM_LONG_PRESS_MOVE_CANCEL_PX = 6;
 const AGENT_MOBILE_QUICK_KEYS: Partial<Record<TermMode, MobileTermQuickKey[]>> = {
   codex: [
     { id: "shift-left", label: "Shift+←", data: "\u001b[1;2D" },
@@ -1764,25 +1766,18 @@ export function App() {
     }
   }, [clearMobileTermLongPressTimer]);
 
-  const openMobileTermLongPressMenu = useCallback((clientX: number, clientY: number) => {
+  const openMobileTermLongPressMenu = useCallback((_clientX: number, _clientY: number) => {
     const wrap = termAreaWrapRef.current;
     if (!wrap) return;
-    const rect = wrap.getBoundingClientRect();
     const menuWidth = 214;
     const menuHeight = 44;
     const controlsHeight = termMobileControlsRef.current?.offsetHeight ?? 0;
     const controlsVisible = isMobile && terminalVisible && termMode !== "cursor" && mobileKeysVisible && controlsHeight > 0;
     const reservedBottom = controlsVisible ? controlsHeight + 8 : 8;
     const maxTop = Math.max(8, wrap.clientHeight - reservedBottom - menuHeight);
-
-    // Prefer placing action menu below the selected text/finger.
-    let left = clientX - rect.left - menuWidth / 2;
-    let top = clientY - rect.top + 14;
-    if (top > maxTop) {
-      top = clientY - rect.top - menuHeight - 14;
-    }
-    left = Math.max(8, Math.min(left, Math.max(8, wrap.clientWidth - menuWidth - 8)));
-    top = Math.max(8, Math.min(top, maxTop));
+    // Keep menu near bottom safe area to avoid blocking selected terminal text.
+    const left = Math.max(8, Math.min((wrap.clientWidth - menuWidth) / 2, Math.max(8, wrap.clientWidth - menuWidth - 8)));
+    const top = maxTop;
     setMobileTermLongPressMenu({ left, top });
     mobileTermMenuHiddenDuringDragRef.current = false;
   }, [isMobile, mobileKeysVisible, termMode, terminalVisible]);
@@ -1817,10 +1812,50 @@ export function App() {
     return a.col - b.col;
   }, []);
 
+  const getMobileTermLineContentEndCol = useCallback((row: number) => {
+    const term = termRef.current;
+    if (!term || row < 0) return -1;
+    try {
+      const line = term.buffer.active.getLine(row);
+      if (!line) return -1;
+      const raw = line.translateToString(true);
+      if (!raw) return -1;
+      const trimmed = raw.replace(/\s+$/u, "");
+      if (!trimmed) return -1;
+      return Math.max(0, Math.min(term.cols - 1, trimmed.length - 1));
+    } catch {
+      return -1;
+    }
+  }, []);
+
   const applyMobileTermSelectionRange = useCallback((a: MobileTermCell, b: MobileTermCell) => {
     const term = termRef.current;
     if (!term) return;
-    const [start, end] = compareMobileTermCell(a, b) <= 0 ? [a, b] : [b, a];
+    let [start, end] = compareMobileTermCell(a, b) <= 0 ? [a, b] : [b, a];
+
+    // Smart selection: avoid expanding into pure blank trailing lines when dragging down.
+    if (end.row > start.row) {
+      let lastTextRow = -1;
+      for (let row = start.row; row <= end.row; row += 1) {
+        if (getMobileTermLineContentEndCol(row) >= 0) lastTextRow = row;
+      }
+      if (lastTextRow < 0) {
+        end = { ...start };
+      } else if (lastTextRow < end.row) {
+        const endCol = getMobileTermLineContentEndCol(lastTextRow);
+        end = { row: lastTextRow, col: endCol >= 0 ? endCol : term.cols - 1 };
+      }
+    }
+
+    if (end.row === start.row && end.col > start.col) {
+      const rowEnd = getMobileTermLineContentEndCol(end.row);
+      if (rowEnd >= start.col) {
+        end = { ...end, col: Math.min(end.col, rowEnd) };
+      }
+    }
+
+    if (compareMobileTermCell(end, start) < 0) end = { ...start };
+
     const rowsSpan = Math.max(0, end.row - start.row);
     const length = Math.max(1, rowsSpan * term.cols + (end.col - start.col + 1));
     try {
@@ -1829,7 +1864,7 @@ export function App() {
     const range = { start, end };
     mobileTermSelectionRef.current = range;
     setMobileTermSelection(range);
-  }, [compareMobileTermCell]);
+  }, [compareMobileTermCell, getMobileTermLineContentEndCol]);
 
   const updateMobileTermSelection = useCallback((current: MobileTermCell) => {
     const anchor = mobileTermSelectionAnchorRef.current;
@@ -1913,7 +1948,8 @@ export function App() {
     mobileTermSelectionHandleDragRef.current = null;
     if (!isMobile || !handle) return;
     const touch = e.changedTouches[0];
-    if (touch) {
+    const selected = termRef.current?.getSelection() ?? "";
+    if (touch && selected.trim().length > 0) {
       openMobileTermLongPressMenu(touch.clientX, touch.clientY);
     }
     mobileTermMenuHiddenDuringDragRef.current = false;
@@ -1975,14 +2011,24 @@ export function App() {
       startY: touch.clientY,
       startScrollTop: viewport.scrollTop,
       startScrollLeft: viewport.scrollLeft,
+      startCell: getMobileTermTouchCell(touch.clientX, touch.clientY),
       latestX: touch.clientX,
       latestY: touch.clientY,
       longPressed: false,
       moved: false,
+      cancelLongPress: false,
     };
     mobileTermLongPressTimerRef.current = window.setTimeout(() => {
       const state = mobileTermTouchStateRef.current;
-      if (!state || state.moved) return;
+      if (!state || state.moved || state.cancelLongPress) return;
+      const currentCell = getMobileTermTouchCell(state.latestX, state.latestY);
+      if (
+        state.startCell &&
+        currentCell &&
+        (currentCell.row !== state.startCell.row || currentCell.col !== state.startCell.col)
+      ) {
+        return;
+      }
       state.longPressed = true;
 
       mobileKeyboardGateRef.current = false;
@@ -2031,6 +2077,7 @@ export function App() {
     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) state.moved = true;
 
     if (!state.longPressed && (Math.abs(dx) > MOBILE_TERM_LONG_PRESS_MOVE_CANCEL_PX || Math.abs(dy) > MOBILE_TERM_LONG_PRESS_MOVE_CANCEL_PX)) {
+      state.cancelLongPress = true;
       clearMobileTermLongPressTimer();
     }
 
@@ -2061,8 +2108,11 @@ export function App() {
     mobileTermTouchStateRef.current = null;
     clearMobileTermLongPressTimer();
     if (state?.longPressed) {
-      openMobileTermLongPressMenu(state.latestX, state.latestY);
-      mobileTermMenuHiddenDuringDragRef.current = false;
+      const selected = termRef.current?.getSelection() ?? "";
+      if (selected.trim().length > 0) {
+        openMobileTermLongPressMenu(state.latestX, state.latestY);
+        mobileTermMenuHiddenDuringDragRef.current = false;
+      }
     }
     if (state?.moved || state?.longPressed) {
       e.preventDefault();
