@@ -62,6 +62,7 @@ type MobileTermCell = { col: number; row: number };
 type MobileTermSelectionRange = { start: MobileTermCell; end: MobileTermCell };
 type MobileTermLongPressMenuState = { left: number; top: number };
 type MobileTermTouchState = {
+  pointerId: number;
   startX: number;
   startY: number;
   startScrollTop: number;
@@ -1500,6 +1501,7 @@ export function App() {
   const askImageButtonLabel = isImageUploading ? t("上传中…") : t("🖼️ 提问图");
   const askImageHintLabel = t("🖼️ 提问图片");
   const activeShortcutDoc = useMemo(() => TOOL_SHORTCUT_DOCS[termMode] ?? null, [termMode]);
+  const mobileTermSelectionActive = isMobile && termMode !== "cursor" && Boolean(mobileTermSelection || mobileTermLongPressMenu);
   const handleSettingsTextareaEnter = useCallback(
     (
       e: React.KeyboardEvent<HTMLTextAreaElement>,
@@ -2029,24 +2031,28 @@ export function App() {
     closeMobileTermLongPressMenu(true);
   }, [closeMobileTermLongPressMenu, sendTermRawInput, t]);
 
-  const handleTermTouchStartCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+  const handleTermPointerDownCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!isMobile) return;
+    if (e.pointerType !== "touch") {
+      e.stopPropagation();
+      return;
+    }
     const viewport = getTermViewport();
-    const touch = e.touches[0];
-    if (!viewport || !touch) return;
+    if (!viewport) return;
 
     closeMobileTermLongPressMenu(true);
     clearMobileTermLongPressTimer();
     mobileTermMenuHiddenDuringDragRef.current = false;
 
     mobileTermTouchStateRef.current = {
-      startX: touch.clientX,
-      startY: touch.clientY,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
       startScrollTop: viewport.scrollTop,
       startScrollLeft: viewport.scrollLeft,
-      startCell: getMobileTermTouchCell(touch.clientX, touch.clientY),
-      latestX: touch.clientX,
-      latestY: touch.clientY,
+      startCell: getMobileTermTouchCell(e.clientX, e.clientY),
+      latestX: e.clientX,
+      latestY: e.clientY,
       pressing: true,
       longPressed: false,
       moved: false,
@@ -2094,16 +2100,15 @@ export function App() {
     updateMobileTermSelection,
   ]);
 
-  const handleTermTouchMoveCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    if (!isMobile) return;
+  const handleTermPointerMoveCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isMobile || e.pointerType !== "touch") return;
     const state = mobileTermTouchStateRef.current;
-    const touch = e.touches[0];
-    if (!state || !touch) return;
+    if (!state || state.pointerId !== e.pointerId) return;
 
-    state.latestX = touch.clientX;
-    state.latestY = touch.clientY;
-    const dx = touch.clientX - state.startX;
-    const dy = touch.clientY - state.startY;
+    state.latestX = e.clientX;
+    state.latestY = e.clientY;
+    const dx = e.clientX - state.startX;
+    const dy = e.clientY - state.startY;
     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) state.moved = true;
 
     if (!state.longPressed && (Math.abs(dx) > MOBILE_TERM_LONG_PRESS_MOVE_CANCEL_PX || Math.abs(dy) > MOBILE_TERM_LONG_PRESS_MOVE_CANCEL_PX)) {
@@ -2116,7 +2121,7 @@ export function App() {
         setMobileTermLongPressMenu(null);
         mobileTermMenuHiddenDuringDragRef.current = true;
       }
-      const cell = getMobileTermTouchCell(touch.clientX, touch.clientY);
+      const cell = getMobileTermTouchCell(e.clientX, e.clientY);
       if (cell) updateMobileTermSelection(cell);
       e.preventDefault();
       e.stopPropagation();
@@ -2126,9 +2131,10 @@ export function App() {
     // For ordinary swipe scrolling, let the browser handle the viewport natively.
   }, [clearMobileTermLongPressTimer, getMobileTermTouchCell, isMobile, updateMobileTermSelection]);
 
-  const handleTermTouchEndCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
-    if (!isMobile) return;
+  const handleTermPointerEndCapture = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isMobile || e.pointerType !== "touch") return;
     const state = mobileTermTouchStateRef.current;
+    if (state && state.pointerId !== e.pointerId) return;
     if (state) {
       state.pressing = false;
       state.cancelLongPress = true;
@@ -4956,7 +4962,8 @@ export function App() {
               <div
                 className={
                   "term termPane " +
-                  (termMode === "cursor" ? "termPaneHidden" : "termPaneActive")
+                  (termMode === "cursor" ? "termPaneHidden" : "termPaneActive") +
+                  (mobileTermSelectionActive ? " termSelecting" : "")
                 }
                 ref={termDivRef}
                 style={{
@@ -4967,18 +4974,10 @@ export function App() {
                 onMouseDown={() => {
                   if (!isMobile) termRef.current?.focus();
                 }}
-                onPointerDownCapture={(e) => {
-                  if (!isMobile) return;
-                  if (e.pointerType === "touch") {
-                    e.stopPropagation();
-                    return;
-                  }
-                  e.stopPropagation();
-                }}
-                onTouchStartCapture={handleTermTouchStartCapture}
-                onTouchMoveCapture={handleTermTouchMoveCapture}
-                onTouchEndCapture={handleTermTouchEndCapture}
-                onTouchCancelCapture={handleTermTouchEndCapture}
+                onPointerDownCapture={handleTermPointerDownCapture}
+                onPointerMoveCapture={handleTermPointerMoveCapture}
+                onPointerUpCapture={handleTermPointerEndCapture}
+                onPointerCancelCapture={handleTermPointerEndCapture}
                 onClickCapture={(e) => {
                   if (!isMobile) return;
                   e.preventDefault();
@@ -5499,7 +5498,8 @@ export function App() {
               <div
                 className={
                   "term termPane " +
-                  (termMode === "cursor" ? "termPaneHidden" : "termPaneActive")
+                  (termMode === "cursor" ? "termPaneHidden" : "termPaneActive") +
+                  (mobileTermSelectionActive ? " termSelecting" : "")
                 }
                 ref={termDivRef}
                 style={{
@@ -5510,18 +5510,10 @@ export function App() {
                 onMouseDown={() => {
                   if (!isMobile) termRef.current?.focus();
                 }}
-                onPointerDownCapture={(e) => {
-                  if (!isMobile) return;
-                  if (e.pointerType === "touch") {
-                    e.stopPropagation();
-                    return;
-                  }
-                  e.stopPropagation();
-                }}
-                onTouchStartCapture={handleTermTouchStartCapture}
-                onTouchMoveCapture={handleTermTouchMoveCapture}
-                onTouchEndCapture={handleTermTouchEndCapture}
-                onTouchCancelCapture={handleTermTouchEndCapture}
+                onPointerDownCapture={handleTermPointerDownCapture}
+                onPointerMoveCapture={handleTermPointerMoveCapture}
+                onPointerUpCapture={handleTermPointerEndCapture}
+                onPointerCancelCapture={handleTermPointerEndCapture}
                 onClickCapture={(e) => {
                   if (!isMobile) return;
                   e.preventDefault();

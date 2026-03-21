@@ -1422,6 +1422,8 @@ input {
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   background: var(--term-bg);
   color: var(--term-fg);
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
 }
 
 .term .xterm,
@@ -1430,10 +1432,23 @@ input {
   background-color: var(--term-bg);
 }
 
+.term .xterm,
+.term .xterm-screen {
+  touch-action: pan-y;
+}
+
 .term .xterm-viewport {
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: auto;
   touch-action: pan-y;
+}
+
+.termSelecting,
+.termSelecting .xterm,
+.termSelecting .xterm-screen,
+.termSelecting .xterm-viewport {
+  touch-action: none;
 }
 
 .termAreaWrap {
