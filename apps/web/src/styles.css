@@ -1514,12 +1514,28 @@ input {
   align-items: flex-start;
   justify-content: center;
   touch-action: none;
+  --handle-bar-x: 10px;
+  --handle-knob-x: 5px;
+}
+
+.termSelectionHandleStart {
+  /* iOS-like start handle: knob slightly on the left side of the anchor */
+  --handle-bar-x: 10px;
+  --handle-knob-x: 2px;
+}
+
+.termSelectionHandleEnd {
+  /* iOS-like end handle: knob slightly on the right side of the anchor */
+  --handle-bar-x: 10px;
+  --handle-knob-x: 8px;
 }
 
 .termSelectionHandleBar {
+  position: absolute;
+  left: var(--handle-bar-x);
+  top: 0;
   width: 2px;
   height: 18px;
-  margin-top: 0;
   border-radius: 1px;
   background: color-mix(in srgb, var(--accent) 78%, #ffffff 22%);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--panel) 55%, transparent);
@@ -1527,6 +1543,7 @@ input {
 
 .termSelectionHandleKnob {
   position: absolute;
+  left: var(--handle-knob-x);
   top: 18px;
   width: 12px;
   height: 12px;
