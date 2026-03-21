@@ -1918,7 +1918,8 @@ export function App() {
     const viewRow = Math.max(0, Math.min(term.rows - 1, row - viewportY));
     const col = Math.max(0, Math.min(term.cols, edgeCol));
     const left = screenRect.left - wrapRect.left + col * cellW;
-    const top = screenRect.top - wrapRect.top + (viewRow + 1) * cellH;
+    // Anchor handles to the selected text row itself (not one line below).
+    const top = screenRect.top - wrapRect.top + viewRow * cellH;
     return { left, top };
   }, []);
 
