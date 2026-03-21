@@ -2052,9 +2052,6 @@ export function App() {
       openMobileTermLongPressMenu(state.latestX, state.latestY);
       setStatus(t("[提示] 已进入复制模式，拖动手指选择文本后点击复制"));
     }, MOBILE_TERM_LONG_PRESS_MS);
-
-    e.preventDefault();
-    e.stopPropagation();
   }, [
     clearMobileTermLongPressTimer,
     closeMobileTermLongPressMenu,
@@ -2069,9 +2066,8 @@ export function App() {
   const handleTermTouchMoveCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     if (!isMobile) return;
     const state = mobileTermTouchStateRef.current;
-    const viewport = getTermViewport();
     const touch = e.touches[0];
-    if (!state || !viewport || !touch) return;
+    if (!state || !touch) return;
 
     state.latestX = touch.clientX;
     state.latestY = touch.clientY;
@@ -2096,14 +2092,8 @@ export function App() {
       termRef.current?.blur();
       return;
     }
-
-    // Keep scroll direction natural: content follows finger movement.
-    viewport.scrollLeft = state.startScrollLeft - dx;
-    viewport.scrollTop = state.startScrollTop - dy;
-    e.preventDefault();
-    e.stopPropagation();
-    termRef.current?.blur();
-  }, [clearMobileTermLongPressTimer, getMobileTermTouchCell, getTermViewport, isMobile, updateMobileTermSelection]);
+    // For ordinary swipe scrolling, let the browser handle the viewport natively.
+  }, [clearMobileTermLongPressTimer, getMobileTermTouchCell, isMobile, updateMobileTermSelection]);
 
   const handleTermTouchEndCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     if (!isMobile) return;
@@ -2121,11 +2111,13 @@ export function App() {
         mobileTermMenuHiddenDuringDragRef.current = false;
       }
     }
-    if (state?.moved || state?.longPressed) {
+    if (state?.longPressed) {
       e.preventDefault();
       e.stopPropagation();
     }
-    termRef.current?.blur();
+    if (state?.longPressed) {
+      termRef.current?.blur();
+    }
   }, [clearMobileTermLongPressTimer, isMobile, openMobileTermLongPressMenu]);
 
   const getTermHelperTextarea = useCallback((): HTMLTextAreaElement | null => {

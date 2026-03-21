@@ -1433,7 +1433,7 @@ input {
 .term .xterm-viewport {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  touch-action: none;
+  touch-action: pan-x pan-y;
 }
 
 .termAreaWrap {
