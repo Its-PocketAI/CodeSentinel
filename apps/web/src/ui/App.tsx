@@ -69,6 +69,7 @@ type MobileTermTouchState = {
   startCell: MobileTermCell | null;
   latestX: number;
   latestY: number;
+  pressing: boolean;
   longPressed: boolean;
   moved: boolean;
   cancelLongPress: boolean;
@@ -2015,13 +2016,14 @@ export function App() {
       startCell: getMobileTermTouchCell(touch.clientX, touch.clientY),
       latestX: touch.clientX,
       latestY: touch.clientY,
+      pressing: true,
       longPressed: false,
       moved: false,
       cancelLongPress: false,
     };
     mobileTermLongPressTimerRef.current = window.setTimeout(() => {
       const state = mobileTermTouchStateRef.current;
-      if (!state || state.moved || state.cancelLongPress) return;
+      if (!state || !state.pressing || state.moved || state.cancelLongPress) return;
       const currentCell = getMobileTermTouchCell(state.latestX, state.latestY);
       if (
         state.startCell &&
@@ -2106,6 +2108,10 @@ export function App() {
   const handleTermTouchEndCapture = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
     if (!isMobile) return;
     const state = mobileTermTouchStateRef.current;
+    if (state) {
+      state.pressing = false;
+      state.cancelLongPress = true;
+    }
     mobileTermTouchStateRef.current = null;
     clearMobileTermLongPressTimer();
     if (state?.longPressed) {
@@ -2178,6 +2184,28 @@ export function App() {
       clearMobileTermLongPressTimer();
     };
   }, [clearMobileTermLongPressTimer]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const cancelPending = () => {
+      const state = mobileTermTouchStateRef.current;
+      if (!state || state.longPressed) return;
+      state.pressing = false;
+      state.cancelLongPress = true;
+      mobileTermTouchStateRef.current = null;
+      clearMobileTermLongPressTimer();
+    };
+    window.addEventListener("touchend", cancelPending, true);
+    window.addEventListener("touchcancel", cancelPending, true);
+    window.addEventListener("pointerup", cancelPending, true);
+    window.addEventListener("pointercancel", cancelPending, true);
+    return () => {
+      window.removeEventListener("touchend", cancelPending, true);
+      window.removeEventListener("touchcancel", cancelPending, true);
+      window.removeEventListener("pointerup", cancelPending, true);
+      window.removeEventListener("pointercancel", cancelPending, true);
+    };
+  }, [clearMobileTermLongPressTimer, isMobile]);
 
   useEffect(() => {
     if (!isMobile || !terminalVisible || termMode === "cursor") {
