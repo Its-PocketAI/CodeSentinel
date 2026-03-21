@@ -95,7 +95,7 @@ const TOOL_DEFS: { id: ToolId; label: string; desc: string }[] = [
 const DEFAULT_TOOL_SETTINGS: UiToolSetting[] = TOOL_DEFS.map((t) => ({ id: t.id, enabled: true }));
 const LARGE_FILE_THRESHOLD_BYTES = 10 * 1024 * 1024;
 const LARGE_FILE_HARD_LIMIT_BYTES = 50 * 1024 * 1024;
-const MOBILE_TERM_LONG_PRESS_MS = 420;
+const MOBILE_TERM_LONG_PRESS_MS = 620;
 const MOBILE_TERM_LONG_PRESS_MOVE_CANCEL_PX = 10;
 const AGENT_MOBILE_QUICK_KEYS: Partial<Record<TermMode, MobileTermQuickKey[]>> = {
   codex: [
