@@ -1321,7 +1321,6 @@ async function main() {
   });
 
   app.post("/api/setup/add-root", async (req, res) => {
-    if (!isLocalReq(req)) return res.status(403).json({ ok: false, error: "setup_local_only" });
     try {
       const rootRaw = String((req.body as any)?.root ?? "").trim();
       const setActive = Boolean((req.body as any)?.setActive ?? true);
