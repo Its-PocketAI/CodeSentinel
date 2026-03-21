@@ -52,7 +52,15 @@ function withWsToken(url: string): string {
 
 export class TermClient {
   private ws: WebSocket | null = null;
-  private pending = new Map<string, (msg: any) => void>();
+  private connectPromise: Promise<void> | null = null;
+  private pending = new Map<
+    string,
+    {
+      resolve: (msg: any) => void;
+      reject: (err: Error) => void;
+      timer: number;
+    }
+  >();
   private outbox: string[] = [];
   onMsg?: (msg: TermServerMsg) => void;
   debug = false;
@@ -61,61 +69,101 @@ export class TermClient {
     if (!this.debug) return;
   }
 
+  private rejectAllPending(reason: string) {
+    for (const [, p] of this.pending) {
+      clearTimeout(p.timer);
+      p.reject(new Error(reason));
+    }
+    this.pending.clear();
+  }
+
   connect(): Promise<void> {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) return Promise.resolve();
+    if (this.connectPromise) return this.connectPromise;
     const url = withWsToken(resolveWsUrl());
     this.log("connect()", { url });
     this.ws = new WebSocket(url);
     const ws = this.ws;
     const p = new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const done = (ok: boolean, err?: Error) => {
+        if (settled) return;
+        settled = true;
+        if (ok) resolve();
+        else reject(err ?? new Error("ws error"));
+      };
       ws.onopen = () => {
         this.log("ws.onopen");
         const queued = this.outbox;
         this.outbox = [];
         for (const m of queued) ws.send(m);
-        resolve();
+        done(true);
       };
       ws.onerror = (ev) => {
         this.log("ws.onerror", ev);
-        reject(new Error("ws error"));
+        done(false, new Error("ws error"));
       };
+      ws.onclose = (ev) => {
+        this.log("ws.onclose", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
+        if (this.ws === ws) this.ws = null;
+        done(false, new Error(`ws closed (${ev.code})`));
+        this.rejectAllPending(`ws closed (${ev.code})`);
+      };
+      ws.onmessage = (ev) => this.onMessage(String(ev.data));
     });
-    this.ws.onclose = (ev) => {
-      this.log("ws.onclose", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
-    };
-    this.ws.onmessage = (ev) => this.onMessage(String(ev.data));
-    return p;
+    this.connectPromise = p.finally(() => {
+      this.connectPromise = null;
+    });
+    return this.connectPromise;
   }
 
   close() {
     this.log("close()");
-    this.ws?.close();
+    try {
+      this.ws?.close();
+    } catch {}
     this.ws = null;
-    this.pending.clear();
+    this.outbox = [];
+    this.rejectAllPending("ws closed");
   }
 
   private request<T extends { t: string; reqId: string }>(msg: any): Promise<T> {
-    const reqId = `r_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
-    msg.reqId = reqId;
-    const p = new Promise<T>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pending.delete(reqId);
-        this.log("request timeout", { t: msg?.t, reqId });
-        reject(new Error("request timeout"));
-      }, 15000);
-      this.pending.set(reqId, (m) => {
-        clearTimeout(timeout);
-        resolve(m as T);
+    return (async () => {
+      await this.connect();
+      const reqId = `r_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+      msg.reqId = reqId;
+      const payload = JSON.stringify(msg);
+      this.log("send", { t: msg?.t, reqId, sessionId: msg?.sessionId, bytes: payload.length });
+      const ws = this.ws;
+      if (!ws) throw new Error("ws not connected");
+      const p = new Promise<T>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          this.pending.delete(reqId);
+          this.log("request timeout", { t: msg?.t, reqId });
+          reject(new Error("request timeout"));
+        }, 45000);
+        this.pending.set(reqId, {
+          resolve: (m) => {
+            clearTimeout(timeout);
+            resolve(m as T);
+          },
+          reject: (err) => {
+            clearTimeout(timeout);
+            reject(err);
+          },
+          timer: timeout,
+        });
       });
-    });
-    if (!this.ws) throw new Error("ws not connected");
-    const payload = JSON.stringify(msg);
-    this.log("send", { t: msg?.t, reqId, sessionId: msg?.sessionId, bytes: payload.length });
-    if (this.ws.readyState !== WebSocket.OPEN) {
-      this.outbox.push(payload);
-    } else {
-      this.ws.send(payload);
-    }
-    return p;
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(payload);
+      } else if (ws.readyState === WebSocket.CONNECTING) {
+        this.outbox.push(payload);
+      } else {
+        this.pending.delete(reqId);
+        throw new Error("ws not connected");
+      }
+      return p;
+    })();
   }
 
   async open(
@@ -194,10 +242,11 @@ export class TermClient {
     }
     this.onMsg?.(msg as TermServerMsg);
     if (msg?.reqId && typeof msg.t === "string" && String(msg.t).endsWith(".resp")) {
-      const cb = this.pending.get(msg.reqId);
-      if (cb) {
+      const p = this.pending.get(msg.reqId);
+      if (p) {
         this.pending.delete(msg.reqId);
-        cb(msg);
+        clearTimeout(p.timer);
+        p.resolve(msg);
       }
     }
   }
