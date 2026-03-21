@@ -3802,18 +3802,31 @@ export function App() {
         termPendingDataBufferRef.current.delete(resp.sessionId);
         termRestoreLockSessionRef.current = resp.sessionId;
         termRestoreLockActiveRef.current = true;
+        const restoreLockTimer = window.setTimeout(() => {
+          if (termRestoreLockSessionRef.current === resp.sessionId) {
+            termRestoreLockActiveRef.current = false;
+            termRestoreLockSessionRef.current = "";
+          }
+        }, 2500);
         term.reset();
         fitAndResize();
         try {
           await client.resize(resp.sessionId, term.cols, term.rows).catch(() => {});
-          const snap = await apiFetch(`/api/term/snapshot/${resp.sessionId}?tailBytes=20000`);
-          if (snap.ok) {
-            const payload = await snap.json();
-            if (payload?.data) {
-              term.write(payload.data);
+          const ctrl = new AbortController();
+          const snapTimer = window.setTimeout(() => ctrl.abort(), 1800);
+          try {
+            const snap = await apiFetch(`/api/term/snapshot/${resp.sessionId}?tailBytes=20000`, { signal: ctrl.signal });
+            if (snap.ok && termRestoreLockSessionRef.current === resp.sessionId) {
+              const payload = await snap.json();
+              if (payload?.data) {
+                term.write(payload.data);
+              }
             }
+          } finally {
+            window.clearTimeout(snapTimer);
           }
         } catch {} finally {
+          window.clearTimeout(restoreLockTimer);
           if (termRestoreLockSessionRef.current === resp.sessionId) {
             termRestoreLockActiveRef.current = false;
             termRestoreLockSessionRef.current = "";
