@@ -59,6 +59,7 @@ type ToolId = "cursor" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "
 type TermMode = "restricted" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor" | "cursor-cli";
 type MobileTermQuickKey = { id: string; label: string; data: string };
 type MobileTermCell = { col: number; row: number };
+type MobileTermSelectionRange = { start: MobileTermCell; end: MobileTermCell };
 type MobileTermLongPressMenuState = { left: number; top: number };
 type MobileTermTouchState = {
   startX: number;
@@ -1273,6 +1274,9 @@ export function App() {
   const mobileTermTouchStateRef = useRef<MobileTermTouchState | null>(null);
   const mobileTermLongPressTimerRef = useRef<number | null>(null);
   const mobileTermSelectionAnchorRef = useRef<MobileTermCell | null>(null);
+  const [mobileTermSelection, setMobileTermSelection] = useState<MobileTermSelectionRange | null>(null);
+  const mobileTermSelectionRef = useRef<MobileTermSelectionRange | null>(null);
+  const mobileTermSelectionHandleDragRef = useRef<"start" | "end" | null>(null);
   const mobileTermMenuHiddenDuringDragRef = useRef(false);
   const [mobileTermLongPressMenu, setMobileTermLongPressMenu] = useState<MobileTermLongPressMenuState | null>(null);
   const lastMobileControlsHRef = useRef<number>(-1);
@@ -1749,11 +1753,14 @@ export function App() {
     clearMobileTermLongPressTimer();
     setMobileTermLongPressMenu(null);
     mobileTermSelectionAnchorRef.current = null;
+    mobileTermSelectionHandleDragRef.current = null;
     mobileTermMenuHiddenDuringDragRef.current = false;
     if (clearSelection) {
       try {
         termRef.current?.clearSelection();
       } catch {}
+      mobileTermSelectionRef.current = null;
+      setMobileTermSelection(null);
     }
   }, [clearMobileTermLongPressTimer]);
 
@@ -1805,22 +1812,98 @@ export function App() {
     return { col, row };
   }, []);
 
-  const updateMobileTermSelection = useCallback((current: MobileTermCell) => {
+  const compareMobileTermCell = useCallback((a: MobileTermCell, b: MobileTermCell) => {
+    if (a.row !== b.row) return a.row - b.row;
+    return a.col - b.col;
+  }, []);
+
+  const applyMobileTermSelectionRange = useCallback((a: MobileTermCell, b: MobileTermCell) => {
     const term = termRef.current;
-    const anchor = mobileTermSelectionAnchorRef.current;
-    if (!term || !anchor) return;
-    let start = anchor;
-    let end = current;
-    if (end.row < start.row || (end.row === start.row && end.col < start.col)) {
-      start = current;
-      end = anchor;
-    }
+    if (!term) return;
+    const [start, end] = compareMobileTermCell(a, b) <= 0 ? [a, b] : [b, a];
     const rowsSpan = Math.max(0, end.row - start.row);
     const length = Math.max(1, rowsSpan * term.cols + (end.col - start.col + 1));
     try {
       term.select(start.col, start.row, length);
     } catch {}
+    const range = { start, end };
+    mobileTermSelectionRef.current = range;
+    setMobileTermSelection(range);
+  }, [compareMobileTermCell]);
+
+  const updateMobileTermSelection = useCallback((current: MobileTermCell) => {
+    const anchor = mobileTermSelectionAnchorRef.current;
+    if (!anchor) return;
+    applyMobileTermSelectionRange(anchor, current);
+  }, [applyMobileTermSelectionRange]);
+
+  const updateMobileTermSelectionHandle = useCallback((handle: "start" | "end", current: MobileTermCell) => {
+    const sel = mobileTermSelectionRef.current;
+    if (!sel) return;
+    if (handle === "start") {
+      applyMobileTermSelectionRange(current, sel.end);
+      return;
+    }
+    applyMobileTermSelectionRange(sel.start, current);
+  }, [applyMobileTermSelectionRange]);
+
+  const getMobileSelectionHandleStyle = useCallback((handle: "start" | "end") => {
+    const wrap = termAreaWrapRef.current;
+    const root = termDivRef.current;
+    const term = termRef.current;
+    const sel = mobileTermSelectionRef.current;
+    if (!wrap || !root || !term || !sel || term.cols <= 0 || term.rows <= 0) return null;
+    const screen = root.querySelector(".xterm-screen") as HTMLElement | null;
+    if (!screen) return null;
+    const screenRect = screen.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect();
+    if (screenRect.width <= 0 || screenRect.height <= 0) return null;
+    const cellW = screenRect.width / term.cols;
+    const cellH = screenRect.height / term.rows;
+    const cell = handle === "start" ? sel.start : sel.end;
+    const viewportY = term.buffer.active.viewportY ?? 0;
+    const viewRow = Math.max(0, Math.min(term.rows - 1, cell.row - viewportY));
+    const col = Math.max(0, Math.min(term.cols - 1, cell.col));
+    const edgeCol = handle === "start" ? col : col + 1;
+    const left = screenRect.left - wrapRect.left + edgeCol * cellW;
+    const top = screenRect.top - wrapRect.top + (viewRow + 1) * cellH;
+    return { left, top };
   }, []);
+
+  const handleMobileSelectionHandleTouchStart = useCallback((handle: "start" | "end", e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
+    mobileTermSelectionHandleDragRef.current = handle;
+    setMobileTermLongPressMenu(null);
+    mobileTermMenuHiddenDuringDragRef.current = true;
+    e.preventDefault();
+    e.stopPropagation();
+  }, [isMobile]);
+
+  const handleMobileSelectionHandleTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    const handle = mobileTermSelectionHandleDragRef.current;
+    if (!isMobile || !handle) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const cell = getMobileTermTouchCell(touch.clientX, touch.clientY);
+    if (cell) updateMobileTermSelectionHandle(handle, cell);
+    termRef.current?.blur();
+    e.preventDefault();
+    e.stopPropagation();
+  }, [getMobileTermTouchCell, isMobile, updateMobileTermSelectionHandle]);
+
+  const handleMobileSelectionHandleTouchEnd = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+    const handle = mobileTermSelectionHandleDragRef.current;
+    mobileTermSelectionHandleDragRef.current = null;
+    if (!isMobile || !handle) return;
+    const touch = e.changedTouches[0];
+    if (touch) {
+      openMobileTermLongPressMenu(touch.clientX, touch.clientY);
+    }
+    mobileTermMenuHiddenDuringDragRef.current = false;
+    termRef.current?.blur();
+    e.preventDefault();
+    e.stopPropagation();
+  }, [isMobile, openMobileTermLongPressMenu]);
 
   const handleMobileTermCopySelection = useCallback(async () => {
     const selected = termRef.current?.getSelection() ?? "";
@@ -4222,6 +4305,8 @@ export function App() {
   // Editor panel and Terminal panel are inlined (not inner components) so that toggling
   // collapse does not change component identity and thus does not unmount/remount
   // CursorChatPanel or trigger session list refetch / terminal session reopen.
+  const mobileSelectionHandleStart = isMobile && mobileTermSelection ? getMobileSelectionHandleStyle("start") : null;
+  const mobileSelectionHandleEnd = isMobile && mobileTermSelection ? getMobileSelectionHandleStyle("end") : null;
 
   return (
     <>
@@ -4694,6 +4779,32 @@ export function App() {
                   e.stopPropagation();
                 }}
               />
+              {isMobile && termMode !== "cursor" && mobileSelectionHandleStart && mobileSelectionHandleEnd ? (
+                <>
+                  <div
+                    className="termSelectionHandle termSelectionHandleStart"
+                    style={{ left: mobileSelectionHandleStart.left, top: mobileSelectionHandleStart.top }}
+                    onTouchStart={(e) => handleMobileSelectionHandleTouchStart("start", e)}
+                    onTouchMove={handleMobileSelectionHandleTouchMove}
+                    onTouchEnd={handleMobileSelectionHandleTouchEnd}
+                    onTouchCancel={handleMobileSelectionHandleTouchEnd}
+                  >
+                    <span className="termSelectionHandleBar" />
+                    <span className="termSelectionHandleKnob" />
+                  </div>
+                  <div
+                    className="termSelectionHandle termSelectionHandleEnd"
+                    style={{ left: mobileSelectionHandleEnd.left, top: mobileSelectionHandleEnd.top }}
+                    onTouchStart={(e) => handleMobileSelectionHandleTouchStart("end", e)}
+                    onTouchMove={handleMobileSelectionHandleTouchMove}
+                    onTouchEnd={handleMobileSelectionHandleTouchEnd}
+                    onTouchCancel={handleMobileSelectionHandleTouchEnd}
+                  >
+                    <span className="termSelectionHandleBar" />
+                    <span className="termSelectionHandleKnob" />
+                  </div>
+                </>
+              ) : null}
               {isMobile && termMode !== "cursor" && mobileTermLongPressMenu ? (
                 <div
                   className="termLongPressMenu"
@@ -5211,6 +5322,32 @@ export function App() {
                   e.stopPropagation();
                 }}
               />
+              {isMobile && termMode !== "cursor" && mobileSelectionHandleStart && mobileSelectionHandleEnd ? (
+                <>
+                  <div
+                    className="termSelectionHandle termSelectionHandleStart"
+                    style={{ left: mobileSelectionHandleStart.left, top: mobileSelectionHandleStart.top }}
+                    onTouchStart={(e) => handleMobileSelectionHandleTouchStart("start", e)}
+                    onTouchMove={handleMobileSelectionHandleTouchMove}
+                    onTouchEnd={handleMobileSelectionHandleTouchEnd}
+                    onTouchCancel={handleMobileSelectionHandleTouchEnd}
+                  >
+                    <span className="termSelectionHandleBar" />
+                    <span className="termSelectionHandleKnob" />
+                  </div>
+                  <div
+                    className="termSelectionHandle termSelectionHandleEnd"
+                    style={{ left: mobileSelectionHandleEnd.left, top: mobileSelectionHandleEnd.top }}
+                    onTouchStart={(e) => handleMobileSelectionHandleTouchStart("end", e)}
+                    onTouchMove={handleMobileSelectionHandleTouchMove}
+                    onTouchEnd={handleMobileSelectionHandleTouchEnd}
+                    onTouchCancel={handleMobileSelectionHandleTouchEnd}
+                  >
+                    <span className="termSelectionHandleBar" />
+                    <span className="termSelectionHandleKnob" />
+                  </div>
+                </>
+              ) : null}
               {isMobile && termMode !== "cursor" && mobileTermLongPressMenu ? (
                 <div
                   className="termLongPressMenu"
