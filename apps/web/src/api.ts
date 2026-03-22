@@ -88,13 +88,44 @@ export type FileSearchHit = {
   preview?: string;
 };
 
+function apiPathFromResponse(res: Response) {
+  try {
+    return new URL(res.url).pathname || "API";
+  } catch {
+    return "API";
+  }
+}
+
 async function j<T>(res: Response): Promise<T> {
-  const data = await res.json();
+  const raw = await res.text();
+  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  let data: any = null;
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = null;
+    }
+  }
   if (res.status === 401) {
     clearAuthToken();
   }
-  if (!res.ok || (data && typeof data === "object" && (data as any).ok === false)) {
-    const msg = (data as any)?.error || `HTTP ${res.status}`;
+  if (!res.ok || (data && typeof data === "object" && (data as any).ok === false) || !data) {
+    const route = apiPathFromResponse(res);
+    const trimmed = raw.trim();
+    const looksHtml =
+      trimmed.startsWith("<!DOCTYPE html") ||
+      trimmed.startsWith("<html") ||
+      trimmed.startsWith("<!doctype html") ||
+      /<body[\s>]/i.test(trimmed);
+    let msg = (data as any)?.error || `HTTP ${res.status}`;
+    if (!data && looksHtml) {
+      msg = `${route} returned HTML instead of JSON. The backend route is unavailable or the server needs restart.`;
+    } else if (!data && trimmed) {
+      msg = `${route} returned ${contentType || "non-JSON content"} (HTTP ${res.status}).`;
+    } else if (!data) {
+      msg = `${route} returned an empty response (HTTP ${res.status}).`;
+    }
     throw new Error(msg);
   }
   return data as T;
