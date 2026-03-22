@@ -1,22 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execa } from "execa";
-import { fileURLToPath } from "node:url";
 import { appendRecording, initSessionRecording, writeSessionMeta } from "./recording.js";
 import { snapshotManager } from "./snapshotManager.js";
 import { buildRunAsEnv, type RunAsUser } from "../userRunAs.js";
+import { loadPty, type Pty } from "./ptyLoader.js";
 
 export type TermSend = (msg: any) => void;
-
-type Pty = {
-  spawn: (file: string, args: string[], opts: any) => {
-    onData: (cb: (d: string) => void) => void;
-    onExit: (cb: (e: { exitCode?: number; signal?: number }) => void) => void;
-    write: (d: string) => void;
-    resize: (cols: number, rows: number) => void;
-    kill: () => void;
-  };
-};
 
 type CodexPtySession = {
   id: string;
@@ -79,33 +69,6 @@ async function resolveCodexBin(): Promise<string> {
   throw new Error('Cannot find "codex". Install it with: npm i -g @openai/codex or set CODEX_BIN=/absolute/path/to/codex.');
 }
 
-async function loadPty(): Promise<Pty> {
-  // Prefer local dependency (if it can load on this Node).
-  try {
-    const m = (await import("@homebridge/node-pty-prebuilt-multiarch")) as any;
-    if (m?.spawn) return m as Pty;
-  } catch {}
-
-  // Fallback: reuse my-remote's built pty module (works in this environment).
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  // apps/server/src/term -> .../<repo>/apps/server/src/term
-  // go up to .../remotecoding, then sibling my-remote/
-  const remotecodingDir = path.resolve(__dirname, "..", "..", "..", "..", "..");
-  const fallback = path.join(
-    remotecodingDir,
-    "my-remote",
-    "node_modules",
-    "@homebridge",
-    "node-pty-prebuilt-multiarch",
-    "lib",
-    "index.js",
-  );
-  const m2 = (await import(fallback)) as any;
-  if (m2?.spawn) return m2 as Pty;
-  throw new Error("Failed to load node-pty module");
-}
-
 export class PtyCodexManager {
   private sessions = new Map<string, CodexPtySession>();
 
@@ -127,7 +90,7 @@ export class PtyCodexManager {
     const realCwd = await this.opts.validateCwd(cwd);
     const sessionId = `t_${randomId()}`;
 
-    const pty = await loadPty();
+    const { pty, spawnOptions } = await loadPty();
     const codexBin = await resolveCodexBin();
 
     // If codex is a JS entrypoint, run it via node under PTY.
@@ -149,6 +112,7 @@ export class PtyCodexManager {
       cols,
       rows,
       cwd: realCwd,
+      ...spawnOptions,
       env: buildRunAsEnv({
         ...process.env,
         PATH: spawnPath,

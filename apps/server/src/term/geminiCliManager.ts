@@ -1,22 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execa } from "execa";
-import { fileURLToPath } from "node:url";
 import { appendRecording, initSessionRecording, writeSessionMeta } from "./recording.js";
 import { snapshotManager } from "./snapshotManager.js";
 import { buildRunAsEnv, type RunAsUser } from "../userRunAs.js";
+import { loadPty, type Pty } from "./ptyLoader.js";
 
 export type TermSend = (msg: any) => void;
-
-type Pty = {
-  spawn: (file: string, args: string[], opts: any) => {
-    onData: (cb: (d: string) => void) => void;
-    onExit: (cb: (e: { exitCode?: number; signal?: number }) => void) => void;
-    write: (d: string) => void;
-    resize: (cols: number, rows: number) => void;
-    kill: () => void;
-  };
-};
 
 type GeminiPtySession = {
   id: string;
@@ -117,29 +107,6 @@ async function resolveGeminiBin(runAs?: RunAsUser | null, overrideBin?: string):
   throw new Error('Cannot find "gemini". Install Gemini CLI or set GEMINI_BIN=/absolute/path/to/gemini.');
 }
 
-async function loadPty(): Promise<Pty> {
-  try {
-    const m = (await import("@homebridge/node-pty-prebuilt-multiarch")) as any;
-    if (m?.spawn) return m as Pty;
-  } catch {}
-
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  const remotecodingDir = path.resolve(__dirname, "..", "..", "..", "..", "..");
-  const fallback = path.join(
-    remotecodingDir,
-    "my-remote",
-    "node_modules",
-    "@homebridge",
-    "node-pty-prebuilt-multiarch",
-    "lib",
-    "index.js",
-  );
-  const m2 = (await import(fallback)) as any;
-  if (m2?.spawn) return m2 as Pty;
-  throw new Error("Failed to load node-pty module");
-}
-
 export class GeminiCliManager {
   private sessions = new Map<string, GeminiPtySession>();
 
@@ -162,7 +129,7 @@ export class GeminiCliManager {
     const realCwd = await this.opts.validateCwd(cwd);
     const sessionId = `gemini_${randomId()}`;
 
-    const pty = await loadPty();
+    const { pty, spawnOptions } = await loadPty();
     const geminiBin = await resolveGeminiBin(runAs ?? null, this.opts.binOverride);
 
     const geminiReal = (() => {
@@ -183,6 +150,7 @@ export class GeminiCliManager {
       cols,
       rows,
       cwd: realCwd,
+      ...spawnOptions,
       env: buildRunAsEnv({
         ...process.env,
         PATH: spawnPath,

@@ -13,6 +13,7 @@ import { OpencodeCliManager } from "./opencodeCliManager.js";
 import { GeminiCliManager } from "./geminiCliManager.js";
 import { KimiCliManager } from "./kimiCliManager.js";
 import { QwenCliManager } from "./qwenCliManager.js";
+import { formatTerminalError } from "./ptyLoader.js";
 import type { RunAsUser } from "../userRunAs.js";
 
 type ActiveSessionMeta = { sessionId: string; cwd: string; mode: string };
@@ -278,8 +279,8 @@ export function attachTermWs(opts: {
 
       const reqId = (msg as any).reqId as string;
       const t = (msg as any).t as string;
-      const fail = (base: string, error: string) =>
-        send(ws, { t: `${base}.resp` as any, reqId, ok: false, error } as any);
+      const fail = (base: string, error: unknown) =>
+        send(ws, { t: `${base}.resp` as any, reqId, ok: false, error: formatTerminalError(error) } as any);
 
       try {
         if (t === "term.open") {
@@ -331,7 +332,7 @@ export function attachTermWs(opts: {
               send(ws, {
                 t: "term.data",
                 sessionId: s.id,
-                data: `\r\n[codex] PTY unavailable, using exec mode: ${e?.message ?? String(e)}\r\n`,
+                data: `\r\n[codex] PTY unavailable, using exec mode: ${formatTerminalError(e)}\r\n`,
               });
             }
           } else if (mode === "cursor-cli-agent" || mode === "cursor-cli-plan" || mode === "cursor-cli-ask") {
@@ -341,7 +342,7 @@ export function attachTermWs(opts: {
               registerSession(s.id, s.cwd, mode, cursorCliMgr, ws);
               send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode });
             } catch (e: any) {
-              return fail("term.open", `Cursor CLI (${cliMode}) failed: ${e?.message ?? String(e)}`);
+              return fail("term.open", `Cursor CLI (${cliMode}) failed: ${formatTerminalError(e)}`);
             }
           } else if (mode === "claude") {
             try {
@@ -349,7 +350,7 @@ export function attachTermWs(opts: {
               registerSession(s.id, s.cwd, "claude", claudeCliMgr, ws);
               send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode: "claude" });
             } catch (e: any) {
-              return fail("term.open", `Claude Code failed: ${e?.message ?? String(e)}`);
+              return fail("term.open", `Claude Code failed: ${formatTerminalError(e)}`);
             }
           } else if (mode === "opencode") {
             try {
@@ -357,7 +358,7 @@ export function attachTermWs(opts: {
               registerSession(s.id, s.cwd, "opencode", opencodeCliMgr, ws);
               send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode: "opencode" });
             } catch (e: any) {
-              return fail("term.open", `OpenCode failed: ${e?.message ?? String(e)}`);
+              return fail("term.open", `OpenCode failed: ${formatTerminalError(e)}`);
             }
           } else if (mode === "gemini") {
             try {
@@ -365,7 +366,7 @@ export function attachTermWs(opts: {
               registerSession(s.id, s.cwd, "gemini", geminiCliMgr, ws);
               send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode: "gemini" });
             } catch (e: any) {
-              return fail("term.open", `Gemini CLI failed: ${e?.message ?? String(e)}`);
+              return fail("term.open", `Gemini CLI failed: ${formatTerminalError(e)}`);
             }
           } else if (mode === "kimi") {
             try {
@@ -373,7 +374,7 @@ export function attachTermWs(opts: {
               registerSession(s.id, s.cwd, "kimi", kimiCliMgr, ws);
               send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode: "kimi" });
             } catch (e: any) {
-              return fail("term.open", `Kimi CLI failed: ${e?.message ?? String(e)}`);
+              return fail("term.open", `Kimi CLI failed: ${formatTerminalError(e)}`);
             }
           } else if (mode === "qwen") {
             try {
@@ -381,7 +382,7 @@ export function attachTermWs(opts: {
               registerSession(s.id, s.cwd, "qwen", qwenCliMgr, ws);
               send(ws, { t: "term.open.resp", reqId, ok: true, sessionId: s.id, cwd: s.cwd, mode: "qwen" });
             } catch (e: any) {
-              return fail("term.open", `Qwen Code CLI failed: ${e?.message ?? String(e)}`);
+              return fail("term.open", `Qwen Code CLI failed: ${formatTerminalError(e)}`);
             }
           } else {
             return fail("term.open", `Unknown mode: ${mode}`);
@@ -452,14 +453,14 @@ export function attachTermWs(opts: {
           Promise.resolve()
             .then(() => mgr.stdin(sessionId, dataStr))
             .catch((e: any) => {
-              broadcast({ t: "term.data", sessionId, data: `\r\n[error] ${e?.message ?? String(e)}\r\n` } as TermServerMsg);
+              broadcast({ t: "term.data", sessionId, data: `\r\n[error] ${formatTerminalError(e)}\r\n` } as TermServerMsg);
             });
           return;
         }
 
         return;
       } catch (e: any) {
-        fail(t, e?.message ?? String(e));
+        fail(t, e);
       }
     });
 
