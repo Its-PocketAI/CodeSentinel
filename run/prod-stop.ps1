@@ -8,15 +8,16 @@ if (-not (Test-Path $PidFile)) {
   exit 0
 }
 
-$pid = Get-Content $PidFile -ErrorAction SilentlyContinue
-if (-not $pid) {
+$procId = Get-Content $PidFile -ErrorAction SilentlyContinue
+if (-not $procId) {
   Remove-Item $PidFile -ErrorAction SilentlyContinue
   Write-Host "Not running"
   exit 0
 }
 
 try {
-  Stop-Process -Id $pid -Force -ErrorAction Stop
+  Get-Process -Id $procId -ErrorAction Stop | Out-Null
+  taskkill.exe /PID $procId /T /F | Out-Null
 } catch {}
 
 Remove-Item $PidFile -ErrorAction SilentlyContinue

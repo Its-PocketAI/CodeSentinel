@@ -6,7 +6,8 @@ const { spawn } = require("child_process");
 const http = require("http");
 const path = require("path");
 
-const PORT = 3990;
+const rawPort = Number(process.env.PORT || process.env.CODESENTINEL_PORT || 3990);
+const PORT = Number.isFinite(rawPort) && rawPort > 0 ? rawPort : 3990;
 const ROOT = path.resolve(__dirname, "..");
 const MAX_WAIT_MS = 30000;
 const POLL_MS = 600;
