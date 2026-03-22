@@ -17,7 +17,12 @@ import type { RunAsUser } from "../userRunAs.js";
 
 type ActiveSessionMeta = { sessionId: string; cwd: string; mode: string };
 let activeSessionRef: Map<string, { cwd: string; mode: string }> | null = null;
-type SessionOwnerRef = { manager: { close: (sessionId: string) => void }; mode: string };
+type TerminalSessionManager = {
+  close: (sessionId: string) => void | Promise<void>;
+  resize: (sessionId: string, cols: number, rows: number) => void | Promise<void>;
+  stdin: (sessionId: string, data: string) => void | Promise<void>;
+};
+type SessionOwnerRef = { manager: TerminalSessionManager; mode: string };
 let activeSessionOwnerRef: Map<string, SessionOwnerRef> | null = null;
 let activeSessionCleanupRef: ((sessionId: string) => void) | null = null;
 
@@ -70,7 +75,7 @@ export function attachTermWs(opts: {
 
   const sessionSubs = new Map<string, Set<WebSocket>>();
   const sessionMeta = new Map<string, { cwd: string; mode: string }>();
-  const sessionOwners = new Map<string, { manager: any; mode: string }>();
+  const sessionOwners = new Map<string, SessionOwnerRef>();
   const sessionActiveAt = new Map<string, number>();
 
   const send = (ws: WebSocket, msg: TermServerMsg) => {
@@ -127,7 +132,13 @@ export function attachTermWs(opts: {
     }
   };
 
-  const registerSession = (sessionId: string, cwd: string, mode: string, manager: any, ws?: WebSocket) => {
+  const registerSession = (
+    sessionId: string,
+    cwd: string,
+    mode: string,
+    manager: TerminalSessionManager,
+    ws?: WebSocket,
+  ) => {
     sessionOwners.set(sessionId, { manager, mode });
     sessionMeta.set(sessionId, { cwd, mode });
     sessionActiveAt.set(sessionId, Date.now());

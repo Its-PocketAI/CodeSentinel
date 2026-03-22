@@ -237,4 +237,10 @@ export class QwenCliManager {
     } catch {}
     snapshotManager.resize(sessionId, cols, rows);
   }
+
+  stdin(sessionId: string, data: string) {
+    const s = this.sessions.get(sessionId);
+    if (!s) throw new Error("Unknown session");
+    s.pty.write(data);
+  }
 }
