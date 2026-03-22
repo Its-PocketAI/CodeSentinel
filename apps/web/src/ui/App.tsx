@@ -19,6 +19,7 @@ import {
   apiDelete,
   apiDownload,
   apiUploadFile,
+  apiSearch,
   apiGetLastOpenedFile,
   apiSetLastOpenedFile,
   apiGetActiveRoot,
@@ -35,6 +36,8 @@ import {
   clearAuthToken,
   getAuthToken,
   type FsEntry,
+  type FileSearchMode,
+  type FileSearchHit,
   type CommandSettings,
   type UiState,
   type UiToolSetting,
@@ -1212,6 +1215,14 @@ export function App() {
   const restoredRootRef = useRef<string>("");
   const [explorerUserPath, setExplorerUserPath] = useState<string>("");
   const [selectedExplorerPath, setSelectedExplorerPath] = useState<string>("");
+  const [fileSearchOpen, setFileSearchOpen] = useState(false);
+  const [fileSearchMode, setFileSearchMode] = useState<FileSearchMode>("name");
+  const [fileSearchQuery, setFileSearchQuery] = useState("");
+  const [fileSearchResults, setFileSearchResults] = useState<FileSearchHit[]>([]);
+  const [fileSearchLoading, setFileSearchLoading] = useState(false);
+  const [fileSearchExecuted, setFileSearchExecuted] = useState(false);
+  const [fileSearchError, setFileSearchError] = useState("");
+  const [fileSearchTruncated, setFileSearchTruncated] = useState(false);
 
   const activeState = activeFile ? fileStateByPath[activeFile] : undefined;
   const fileText = activeState?.text ?? "";
@@ -2784,6 +2795,56 @@ export function App() {
     treeRef.current = tree;
   }, [tree]);
 
+  const clearFileSearchState = useCallback((opts?: { keepOpen?: boolean; keepQuery?: boolean }) => {
+    setFileSearchLoading(false);
+    setFileSearchExecuted(false);
+    setFileSearchError("");
+    setFileSearchResults([]);
+    setFileSearchTruncated(false);
+    if (!opts?.keepQuery) setFileSearchQuery("");
+    if (!opts?.keepOpen) setFileSearchOpen(false);
+  }, []);
+
+  const handleToggleFileSearch = useCallback(() => {
+    if (fileSearchOpen) {
+      clearFileSearchState();
+      return;
+    }
+    setFileSearchOpen(true);
+  }, [clearFileSearchState, fileSearchOpen]);
+
+  useEffect(() => {
+    clearFileSearchState({ keepOpen: false, keepQuery: false });
+  }, [activeRoot, clearFileSearchState]);
+
+  const handleRunFileSearch = useCallback(async () => {
+    const query = fileSearchQuery.trim();
+    if (!activeRoot) {
+      setStatus(t("[错误] 请先选择目录"));
+      return;
+    }
+    if (!query) {
+      clearFileSearchState({ keepOpen: true, keepQuery: false });
+      return;
+    }
+    setFileSearchLoading(true);
+    setFileSearchExecuted(true);
+    setFileSearchError("");
+    try {
+      const res = await apiSearch(activeRoot, query, fileSearchMode, 100);
+      setFileSearchResults(res.results);
+      setFileSearchTruncated(res.truncated);
+    } catch (e: any) {
+      const msg = e?.message ?? String(e);
+      setFileSearchResults([]);
+      setFileSearchTruncated(false);
+      setFileSearchError(msg);
+      setStatus(t("[错误] 搜索: {msg}", { msg }));
+    } finally {
+      setFileSearchLoading(false);
+    }
+  }, [activeRoot, clearFileSearchState, fileSearchMode, fileSearchQuery, t]);
+
   const explorerTargetPath = useMemo(() => {
     if (!activeRoot) return "";
     if (explorerUserPath && pathStartsWithPath(explorerUserPath, activeRoot)) return explorerUserPath;
@@ -3057,6 +3118,18 @@ export function App() {
       setStatus(t("[错误] 读取: {msg}", { msg: e?.message ?? String(e) }));
     }
   };
+
+  const handleOpenSearchHit = useCallback(async (hit: FileSearchHit) => {
+    if (!hit?.path) return;
+    const parentDir = dirName(hit.path);
+    if (parentDir) setExplorerUserPath(parentDir);
+    setSelectedExplorerPath(hit.path);
+    await openFile({
+      path: hit.path,
+      name: hit.name || baseName(hit.path),
+      type: "file",
+    });
+  }, [openFile]);
 
   const save = async () => {
     if (!activeFile) return;
@@ -4417,6 +4490,209 @@ export function App() {
     </div>
   );
 
+  const renderExplorerTree = () => {
+    if (!tree) {
+      return <div className="fileMeta">{ready ? t("加载中…") : t("无根目录")}</div>;
+    }
+    return (
+      <TreeView
+        node={tree}
+        depth={0}
+        activeFile={activeFile}
+        selectedPath={selectedExplorerPath}
+        rootPath={activeRoot}
+        onSelectNode={(n) => setSelectedExplorerPath(n.path)}
+        onToggleDir={toggleDir}
+        onOpenFile={openFile}
+        onOpenTerminalDir={openTerminalDir}
+        onDeleteNode={handleDeleteNode}
+        onDownloadFile={handleDownloadFile}
+      />
+    );
+  };
+
+  const renderFileSearchResults = () => {
+    if (fileSearchLoading) {
+      return <div className="fileSearchEmpty">{t("搜索中…")}</div>;
+    }
+    if (fileSearchError) {
+      return <div className="fileSearchEmpty fileSearchEmptyError">{t("加载失败：{msg}", { msg: fileSearchError })}</div>;
+    }
+    if (!fileSearchExecuted) {
+      return renderExplorerTree();
+    }
+    if (fileSearchResults.length === 0) {
+      return <div className="fileSearchEmpty">{t("暂无搜索结果")}</div>;
+    }
+    return (
+      <div className="fileSearchResults">
+        <div className="fileSearchResultsMeta">
+          <span>{t("共 {count} 个结果", { count: fileSearchResults.length })}</span>
+          {fileSearchTruncated ? <span>{t("结果已截断，仅显示前 {count} 项", { count: fileSearchResults.length })}</span> : null}
+        </div>
+        {fileSearchResults.map((hit) => (
+          <button
+            key={`${hit.path}:${hit.line ?? 0}:${hit.column ?? 0}`}
+            type="button"
+            className="fileSearchResult"
+            onClick={() => {
+              void handleOpenSearchHit(hit);
+            }}
+            title={hit.path}
+          >
+            <div className="fileSearchResultHead">
+              <span className="fileSearchResultName">{hit.name}</span>
+              {hit.line ? (
+                <span className="fileSearchResultBadge">
+                  {t("第 {line} 行", { line: hit.line })}{hit.column ? `:${hit.column}` : ""}
+                </span>
+              ) : null}
+            </div>
+            <div className="fileSearchResultPath">{hit.relativePath}</div>
+            {hit.preview ? <div className="fileSearchResultPreview">{hit.preview}</div> : null}
+          </button>
+        ))}
+      </div>
+    );
+  };
+
+  const renderFileToolbar = () => (
+    <div className="row fileToolbarRow" style={{ gap: 6, marginTop: 6 }}>
+      <button
+        type="button"
+        className="segBtn segBtnUpload"
+        onClick={handleUploadClick}
+        disabled={!activeRoot || isUploading}
+        title={t("上传到当前目录")}
+      >
+        {isUploading ? t("上传中…") : t("上传")}
+      </button>
+      <button
+        type="button"
+        className="segBtn"
+        onClick={createFolder}
+        disabled={!activeRoot}
+        title={t("新建文件夹")}
+      >
+        📁+
+      </button>
+      <button
+        type="button"
+        className="segBtn"
+        onClick={createFile}
+        disabled={!activeRoot}
+        title={t("新建文件")}
+      >
+        📄+
+      </button>
+      <button
+        type="button"
+        className={"segBtn fileSearchToggleBtn" + (fileSearchOpen ? " segBtnActive" : "")}
+        onClick={handleToggleFileSearch}
+        disabled={!activeRoot}
+        title={t("搜索文件")}
+        aria-label={t("搜索文件")}
+      >
+        🔍
+      </button>
+    </div>
+  );
+
+  const renderFilePane = () => (
+    <>
+      {fileSearchOpen ? (
+        <div className="fileSearchPanel">
+          <div className="fileSearchPanelHead">
+            <div className="fileSearchPanelTitle">{t("搜索文件")}</div>
+            <button
+              type="button"
+              className="fileSearchCloseBtn"
+              onClick={() => clearFileSearchState()}
+              aria-label={t("关闭")}
+              title={t("关闭")}
+            >
+              ✕
+            </button>
+          </div>
+          <div className="fileSearchPanelMeta">
+            {t("搜索范围：{path}", { path: activeRoot || "-" })}
+          </div>
+          <form
+            className="fileSearchForm"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleRunFileSearch();
+            }}
+          >
+            <div className="segmented fileSearchModeSegmented" role="tablist" aria-label={t("搜索模式")}>
+              <button
+                type="button"
+                className={"segBtn" + (fileSearchMode === "name" ? " segBtnActive" : "")}
+                onClick={() => {
+                  setFileSearchMode("name");
+                  setFileSearchExecuted(false);
+                  setFileSearchError("");
+                  setFileSearchResults([]);
+                  setFileSearchTruncated(false);
+                }}
+              >
+                {t("文件名")}
+              </button>
+              <button
+                type="button"
+                className={"segBtn" + (fileSearchMode === "content" ? " segBtnActive" : "")}
+                onClick={() => {
+                  setFileSearchMode("content");
+                  setFileSearchExecuted(false);
+                  setFileSearchError("");
+                  setFileSearchResults([]);
+                  setFileSearchTruncated(false);
+                }}
+              >
+                {t("文件内容")}
+              </button>
+            </div>
+            <div className="fileSearchInputRow">
+              <input
+                className="input fileSearchInput"
+                value={fileSearchQuery}
+                placeholder={
+                  fileSearchMode === "name"
+                    ? t("搜索文件名，例如 App.tsx")
+                    : t("搜索文件内容，例如 useEffect")
+                }
+                onChange={(e) => {
+                  setFileSearchQuery(e.target.value);
+                  setFileSearchExecuted(false);
+                  setFileSearchError("");
+                  setFileSearchResults([]);
+                  setFileSearchTruncated(false);
+                }}
+              />
+              <button
+                type="submit"
+                className="btn"
+                disabled={!activeRoot || !fileSearchQuery.trim() || fileSearchLoading}
+              >
+                {fileSearchLoading ? t("搜索中…") : t("搜索")}
+              </button>
+            </div>
+          </form>
+          {!fileSearchExecuted && !fileSearchLoading ? (
+            <div className="fileSearchHint">
+              {t("可按文件名或文件内容搜索当前项目。")}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="fileList" ref={(el) => {
+        if (el) fileListRef.current = el;
+      }}>
+        {renderFileSearchResults()}
+      </div>
+    </>
+  );
+
   const explorerPanelTab: "files" | "settings" | "windows" = isMobile ? "files" : leftPanelTab;
 
   const ExplorerPanel = (
@@ -4451,60 +4727,12 @@ export function App() {
         </div>
 
         {explorerPanelTab === "files" ? (
-          <div className="row" style={{ gap: 6, marginTop: 6 }}>
-            <button
-              type="button"
-              className="segBtn segBtnUpload"
-              onClick={handleUploadClick}
-              disabled={!activeRoot || isUploading}
-              title={t("上传到当前目录")}
-            >
-              {isUploading ? t("上传中…") : t("上传")}
-            </button>
-            <button
-              type="button"
-              className="segBtn"
-              onClick={createFolder}
-              disabled={!activeRoot}
-              title={t("新建文件夹")}
-            >
-              📁+
-            </button>
-            <button
-              type="button"
-              className="segBtn"
-              onClick={createFile}
-              disabled={!activeRoot}
-              title={t("新建文件")}
-            >
-              📄+
-            </button>
-          </div>
+          renderFileToolbar()
         ) : null}
       </div>
       <div className="panelBody">
         {explorerPanelTab === "files" ? (
-          <div className="fileList" ref={(el) => {
-            if (el) fileListRef.current = el;
-          }}>
-                {tree ? (
-                  <TreeView
-                    node={tree}
-                    depth={0}
-                    activeFile={activeFile}
-                    selectedPath={selectedExplorerPath}
-                    rootPath={activeRoot}
-                    onSelectNode={(n) => setSelectedExplorerPath(n.path)}
-                    onToggleDir={toggleDir}
-                    onOpenFile={openFile}
-                    onOpenTerminalDir={openTerminalDir}
-                    onDeleteNode={handleDeleteNode}
-                    onDownloadFile={handleDownloadFile}
-                  />
-                ) : (
-              <div className="fileMeta">{ready ? t("加载中…") : t("无根目录")}</div>
-            )}
-          </div>
+          renderFilePane()
         ) : explorerPanelTab === "settings" ? (
           SettingsPanel
         ) : (
@@ -4638,62 +4866,14 @@ export function App() {
                   </button>
                 </div>
                 {leftPanelTab === "files" ? (
-                  <div className="row" style={{ gap: 6, marginTop: 6 }}>
-                    <button
-                      type="button"
-                      className="segBtn segBtnUpload"
-                      onClick={handleUploadClick}
-                      disabled={!activeRoot || isUploading}
-                      title={t("上传到当前目录")}
-                    >
-                      {isUploading ? t("上传中…") : t("上传")}
-                    </button>
-                    <button
-                      type="button"
-                      className="segBtn"
-                      onClick={createFolder}
-                      disabled={!activeRoot}
-                      title={t("新建文件夹")}
-                    >
-                      📁+
-                    </button>
-                    <button
-                      type="button"
-                      className="segBtn"
-                      onClick={createFile}
-                      disabled={!activeRoot}
-                      title={t("新建文件")}
-                    >
-                      📄+
-                    </button>
-                  </div>
+                  renderFileToolbar()
                 ) : null}
               </>
             ) : null}
           </div>
           <div className="panelBody">
             {leftPanelTab === "files" ? (
-              <div className="fileList" ref={(el) => {
-                if (el) fileListRef.current = el;
-              }}>
-                {tree ? (
-                  <TreeView
-                    node={tree}
-                    depth={0}
-                    activeFile={activeFile}
-                    selectedPath={selectedExplorerPath}
-                    rootPath={activeRoot}
-                    onSelectNode={(n) => setSelectedExplorerPath(n.path)}
-                    onToggleDir={toggleDir}
-                    onOpenFile={openFile}
-                    onOpenTerminalDir={openTerminalDir}
-                    onDeleteNode={handleDeleteNode}
-                    onDownloadFile={handleDownloadFile}
-                  />
-                ) : (
-                  <div className="fileMeta">{ready ? t("加载中…") : t("无根目录")}</div>
-                )}
-              </div>
+              renderFilePane()
             ) : leftPanelTab === "settings" ? (
               SettingsPanel
             ) : (

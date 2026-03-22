@@ -33,7 +33,7 @@ It is optimized for mobile + desktop, and designed for persistent terminal workf
       <img src="./docs/images/pc-mode.png" alt="CodeSentinel desktop mode" />
     </td>
     <td width="50%">
-      <img src="./docs/images/mobile-mode.png" alt="CodeSentinel mobile mode" />
+      <img src="./docs/images/mobile-mode.png" alt="CodeSentinel mobile mode" width="56%" />
     </td>
   </tr>
   <tr>

@@ -77,6 +77,17 @@ export type FsEntry = {
   mtimeMs: number;
 };
 
+export type FileSearchMode = "name" | "content";
+
+export type FileSearchHit = {
+  path: string;
+  relativePath: string;
+  name: string;
+  line?: number;
+  column?: number;
+  preview?: string;
+};
+
 async function j<T>(res: Response): Promise<T> {
   const data = await res.json();
   if (res.status === 401) {
@@ -337,6 +348,23 @@ export async function apiList(path: string) {
   return j<{ ok: true; path: string; entries: FsEntry[] }>(
     await authedFetch(`/api/list?path=${encodeURIComponent(path)}`),
   );
+}
+
+export async function apiSearch(path: string, query: string, mode: FileSearchMode, limit = 100) {
+  const params = new URLSearchParams();
+  params.set("path", path);
+  params.set("query", query);
+  params.set("mode", mode);
+  params.set("limit", String(limit));
+  return j<{
+    ok: true;
+    path: string;
+    query: string;
+    mode: FileSearchMode;
+    results: FileSearchHit[];
+    truncated: boolean;
+    engine: "rg" | "fs";
+  }>(await authedFetch(`/api/search?${params.toString()}`));
 }
 
 export async function apiStat(path: string) {

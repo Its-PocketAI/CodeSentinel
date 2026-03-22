@@ -13,7 +13,7 @@ import Busboy from "busboy";
 
 import { loadConfig, rootsOverridePath, readRootsOverride } from "./config.js";
 import { ROOTS_ALL_SENTINEL, isAllRootsToken, normalizeRoots, validatePathInRoots } from "./pathGuard.js";
-import { listDir, readTextFile, writeTextFile, createDir, statPath } from "./fsApi.js";
+import { listDir, readTextFile, writeTextFile, createDir, statPath, searchFiles } from "./fsApi.js";
 import { attachTermWs, closeActiveTermSession, listActiveTermSessions } from "./term/wsTerm.js";
 import { getDataDir } from "./paths.js";
 import { snapshotManager } from "./term/snapshotManager.js";
@@ -1646,6 +1646,23 @@ async function main() {
     try {
       const p = String(req.query.path ?? "");
       const r = await listDir(guardRoots, p);
+      res.json({ ok: true, ...r });
+    } catch (e: any) {
+      res.status(400).json({ ok: false, error: e?.message ?? String(e) });
+    }
+  });
+
+  app.get("/api/search", async (req, res) => {
+    try {
+      const p = String(req.query.path ?? "");
+      const query = String(req.query.query ?? "");
+      const mode = String(req.query.mode ?? "name");
+      const limitRaw = Number(req.query.limit ?? 100);
+      if (mode !== "name" && mode !== "content") {
+        return res.status(400).json({ ok: false, error: "Invalid search mode" });
+      }
+      const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 100, 200));
+      const r = await searchFiles(guardRoots, p, query, mode, limit);
       res.json({ ok: true, ...r });
     } catch (e: any) {
       res.status(400).json({ ok: false, error: e?.message ?? String(e) });

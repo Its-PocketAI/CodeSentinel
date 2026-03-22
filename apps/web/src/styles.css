@@ -844,6 +844,164 @@ input {
   font-size: calc(12px * var(--ui-font-scale));
 }
 
+.fileToolbarRow {
+  align-items: center;
+}
+
+.fileSearchToggleBtn {
+  border: 1px solid rgba(14, 99, 156, 0.42);
+  border-radius: var(--radius-sm);
+}
+
+.fileSearchPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, rgba(14, 99, 156, 0.08), rgba(14, 99, 156, 0.03));
+}
+
+.fileSearchPanelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fileSearchPanelTitle {
+  font-size: calc(12px * var(--ui-font-scale));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.fileSearchPanelMeta {
+  color: var(--muted);
+  font-size: calc(11px * var(--ui-font-scale));
+  font-family: var(--mono);
+  word-break: break-all;
+}
+
+.fileSearchCloseBtn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  border-radius: var(--radius-xs);
+  width: calc(26px * var(--ui-font-scale));
+  height: calc(26px * var(--ui-font-scale));
+  cursor: pointer;
+}
+
+.fileSearchForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fileSearchModeSegmented {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.fileSearchInputRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.fileSearchInput {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+}
+
+.fileSearchHint,
+.fileSearchEmpty,
+.fileSearchResultsMeta {
+  font-size: calc(11px * var(--ui-font-scale));
+  color: var(--muted);
+}
+
+.fileSearchEmpty {
+  padding: 10px 4px;
+}
+
+.fileSearchEmptyError {
+  color: #dc2626;
+}
+
+.fileSearchResults {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fileSearchResultsMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fileSearchResult {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid rgba(14, 99, 156, 0.22);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.fileSearchResult:hover {
+  border-color: rgba(14, 99, 156, 0.65);
+  background: var(--panel2);
+}
+
+.fileSearchResultHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fileSearchResultName {
+  font-size: calc(12px * var(--ui-font-scale));
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileSearchResultBadge {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid rgba(14, 99, 156, 0.3);
+  border-radius: var(--radius-xs);
+  color: var(--accent2);
+  font-size: calc(10px * var(--ui-font-scale));
+}
+
+.fileSearchResultPath,
+.fileSearchResultPreview {
+  color: var(--muted);
+  font-size: calc(11px * var(--ui-font-scale));
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.fileSearchResultPath {
+  font-family: var(--mono);
+}
+
 .settingsPanel {
   display: flex;
   flex-direction: column;
@@ -1762,6 +1920,23 @@ input {
     flex-wrap: wrap;
   }
 
+  .fileToolbarRow {
+    flex-wrap: wrap;
+  }
+
+  .fileSearchInputRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fileSearchModeSegmented {
+    width: 100%;
+  }
+
+  .fileSearchModeSegmented .segBtn {
+    flex: 1 1 0;
+  }
+
   .termPanelHeader .termPanelHeaderRow {
     flex-wrap: nowrap;
     align-items: center;
@@ -2298,6 +2473,10 @@ input {
 }
 
 @media (max-width: 430px) {
+  .fileSearchResultHead {
+    flex-wrap: wrap;
+  }
+
   .termMobileKeyBtn {
     min-width: clamp(48px, 12vw, 80px);
     font-size: calc(10px * var(--ui-font-scale));
