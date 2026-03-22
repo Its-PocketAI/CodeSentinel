@@ -2,24 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { execSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import type { TermServerMsg } from "@codesentinel/protocol";
 import { appendRecording, initSessionRecording, writeSessionMeta } from "./recording.js";
 import { snapshotManager } from "./snapshotManager.js";
 import { buildRunAsEnv, type RunAsUser } from "../userRunAs.js";
+import { loadPty, type Pty } from "./ptyLoader.js";
 
 type SendFn = (msg: TermServerMsg) => void;
-
-type Pty = {
-  spawn: (file: string, args: string[], opts: any) => {
-    onData: (cb: (d: string) => void) => void;
-    onExit: (cb: (e: { exitCode?: number; signal?: number }) => void) => void;
-    write: (d: string) => void;
-    resize: (cols: number, rows: number) => void;
-    kill: () => void;
-    pid?: number;
-  };
-};
 
 interface Session {
   id: string;
@@ -53,33 +42,6 @@ function makeCleanEnv() {
   return baseEnv;
 }
 
-async function loadPty(): Promise<Pty> {
-  // Prefer local dependency (if it can load on this Node).
-  try {
-    const m = (await import("@homebridge/node-pty-prebuilt-multiarch")) as any;
-    if (m?.spawn) return m as Pty;
-  } catch {}
-
-  // Fallback: reuse my-remote's built pty module (works in this environment).
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  // apps/server/src/term -> .../<repo>/apps/server/src/term
-  // go up to .../remotecoding, then sibling my-remote/
-  const remotecodingDir = path.resolve(__dirname, "..", "..", "..", "..", "..");
-  const fallback = path.join(
-    remotecodingDir,
-    "my-remote",
-    "node_modules",
-    "@homebridge",
-    "node-pty-prebuilt-multiarch",
-    "lib",
-    "index.js",
-  );
-  const m2 = (await import(fallback)) as any;
-  if (m2?.spawn) return m2 as Pty;
-  throw new Error("Failed to load PTY module (node-pty)");
-}
-
 export class CursorCliManager {
   private sessions = new Map<string, Session>();
   private maxSessions: number;
@@ -111,7 +73,7 @@ export class CursorCliManager {
 
     const realCwd = await this.validateCwd(cwd);
 
-    const pty = await loadPty();
+    const { pty, spawnOptions } = await loadPty();
 
     // Find agent binary
     const agentBin = this.resolveAgentBin();
@@ -209,6 +171,7 @@ export class CursorCliManager {
       cols,
       rows,
       cwd: realCwd,
+      ...spawnOptions,
       env: buildRunAsEnv(
         {
           ...baseEnv,

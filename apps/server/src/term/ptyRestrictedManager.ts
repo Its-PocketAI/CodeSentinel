@@ -1,21 +1,10 @@
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { appendRecording, initSessionRecording, writeSessionMeta } from "./recording.js";
 import { snapshotManager } from "./snapshotManager.js";
 import { buildRunAsEnv, type RunAsUser } from "../userRunAs.js";
+import { loadPty, type Pty } from "./ptyLoader.js";
 
 export type TermSend = (msg: any) => void;
-
-type Pty = {
-  spawn: (file: string, args: string[], opts: any) => {
-    onData: (cb: (d: string) => void) => void;
-    onExit: (cb: (e: { exitCode?: number; signal?: number }) => void) => void;
-    write: (d: string) => void;
-    resize: (cols: number, rows: number) => void;
-    kill: () => void;
-  };
-};
 
 type RestrictedPtySession = {
   id: string;
@@ -50,29 +39,6 @@ function resolveShell(): { bin: string; args: string[] } {
   return { bin: "/bin/bash", args: ["-l"] };
 }
 
-async function loadPty(): Promise<Pty> {
-  try {
-    const m = (await import("@homebridge/node-pty-prebuilt-multiarch")) as any;
-    if (m?.spawn) return m as Pty;
-  } catch {}
-
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  const remotecodingDir = path.resolve(__dirname, "..", "..", "..", "..", "..");
-  const fallback = path.join(
-    remotecodingDir,
-    "my-remote",
-    "node_modules",
-    "@homebridge",
-    "node-pty-prebuilt-multiarch",
-    "lib",
-    "index.js",
-  );
-  const m2 = (await import(fallback)) as any;
-  if (m2?.spawn) return m2 as Pty;
-  throw new Error("Failed to load node-pty module");
-}
-
 export class PtyRestrictedManager {
   private sessions = new Map<string, RestrictedPtySession>();
 
@@ -94,7 +60,7 @@ export class PtyRestrictedManager {
     const realCwd = await this.opts.validateCwd(cwd);
     const sessionId = `r_${randomId()}`;
 
-    const pty = await loadPty();
+    const { pty, spawnOptions } = await loadPty();
     const { bin, args } = resolveShell();
 
     const term = pty.spawn(bin, args, {
@@ -102,6 +68,7 @@ export class PtyRestrictedManager {
       cols,
       rows,
       cwd: realCwd,
+      ...spawnOptions,
       env: buildRunAsEnv({
         ...process.env,
         TERM: "xterm-256color",

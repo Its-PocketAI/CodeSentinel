@@ -108,6 +108,32 @@ Files:
 - `run/dev-start.ps1`
 - `run/prod-start.ps1`
 
+### 6. Windows PTY fallback leaked full native module stack traces to the terminal UI
+
+Symptom:
+
+- When `conpty.node` was missing, opening `codex` on Windows dumped the full `Require stack` into the terminal.
+- The fallback itself worked, but the UI exposed noisy internal loader details instead of a concise Windows-specific status line.
+
+Fix:
+
+- Added a shared Windows-aware PTY loader that checks `conpty.node` and `pty.node` before spawning.
+- All PTY-backed terminal managers now use the same loader instead of duplicating their own import logic.
+- WebSocket terminal errors are normalized to the first line so frontend users only see a concise message.
+
+Files:
+
+- `apps/server/src/term/ptyLoader.ts`
+- `apps/server/src/term/ptyCodexManager.ts`
+- `apps/server/src/term/cursorCliManager.ts`
+- `apps/server/src/term/claudeCliManager.ts`
+- `apps/server/src/term/opencodeCliManager.ts`
+- `apps/server/src/term/geminiCliManager.ts`
+- `apps/server/src/term/kimiCliManager.ts`
+- `apps/server/src/term/qwenCliManager.ts`
+- `apps/server/src/term/ptyRestrictedManager.ts`
+- `apps/server/src/term/wsTerm.ts`
+
 ## Current Limitation
 
 ### `node-pty` interactive Windows PTY is not fully available on this machine
@@ -126,7 +152,9 @@ Observed blockers:
 Current handling:
 
 - `run/windows-ensure-native.ps1` warns clearly about the missing PTY binary.
-- CodeSentinel still works because server-side codex terminal fallback (`codex exec`) is already implemented and was validated successfully.
+- CodeSentinel now checks Windows PTY binary availability before spawning PTY terminals.
+- When PTY is unavailable, the terminal falls back cleanly to server-side exec mode with a concise user-facing message.
+- CodeSentinel still works because server-side codex terminal fallback (`codex exec`) was validated successfully.
 
 ## Validation Result
 
@@ -136,5 +164,9 @@ Windows validation passed with one documented limitation:
 - Auth login flow: passed
 - WebSocket terminal open/send/close: passed
 - CodeSentinel `codex` mode send instruction and receive answer: passed
+- Windows `codex` fallback message sanitization: passed
 - Full Windows PTY-backed codex session: not available on this machine; fallback exec mode used instead
 
+Validation artifact:
+
+- `logs/windows-validation-summary.json`
