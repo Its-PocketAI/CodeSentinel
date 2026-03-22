@@ -445,6 +445,12 @@ function pathStartsWithPath(path: string, root: string) {
   return p.startsWith(prefix);
 }
 
+function isAbsoluteFsPath(p: string) {
+  if (!p) return false;
+  const trimmed = p.trim();
+  return trimmed.startsWith("/") || trimmed.startsWith("\\\\") || /^[a-zA-Z]:[\\/]/.test(trimmed);
+}
+
 function bytes(n: number) {
   if (n < 1024) return `${n} B`;
   const kb = n / 1024;
@@ -1217,6 +1223,8 @@ export function App() {
   const [selectedExplorerPath, setSelectedExplorerPath] = useState<string>("");
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [fileSearchMode, setFileSearchMode] = useState<FileSearchMode>("name");
+  const [fileSearchScopeMode, setFileSearchScopeMode] = useState<"root" | "current" | "custom">("root");
+  const [fileSearchScopePath, setFileSearchScopePath] = useState("");
   const [fileSearchQuery, setFileSearchQuery] = useState("");
   const [fileSearchResults, setFileSearchResults] = useState<FileSearchHit[]>([]);
   const [fileSearchLoading, setFileSearchLoading] = useState(false);
@@ -2817,34 +2825,6 @@ export function App() {
     clearFileSearchState({ keepOpen: false, keepQuery: false });
   }, [activeRoot, clearFileSearchState]);
 
-  const handleRunFileSearch = useCallback(async () => {
-    const query = fileSearchQuery.trim();
-    if (!activeRoot) {
-      setStatus(t("[错误] 请先选择目录"));
-      return;
-    }
-    if (!query) {
-      clearFileSearchState({ keepOpen: true, keepQuery: false });
-      return;
-    }
-    setFileSearchLoading(true);
-    setFileSearchExecuted(true);
-    setFileSearchError("");
-    try {
-      const res = await apiSearch(activeRoot, query, fileSearchMode, 100);
-      setFileSearchResults(res.results);
-      setFileSearchTruncated(res.truncated);
-    } catch (e: any) {
-      const msg = e?.message ?? String(e);
-      setFileSearchResults([]);
-      setFileSearchTruncated(false);
-      setFileSearchError(msg);
-      setStatus(t("[错误] 搜索: {msg}", { msg }));
-    } finally {
-      setFileSearchLoading(false);
-    }
-  }, [activeRoot, clearFileSearchState, fileSearchMode, fileSearchQuery, t]);
-
   const explorerTargetPath = useMemo(() => {
     if (!activeRoot) return "";
     if (explorerUserPath && pathStartsWithPath(explorerUserPath, activeRoot)) return explorerUserPath;
@@ -3220,6 +3200,64 @@ export function App() {
     if (explorerTargetPath) return explorerTargetPath;
     return activeRoot;
   }, [selectedExplorerPath, explorerTargetPath, activeRoot]);
+
+  const currentExplorerDir = useMemo(
+    () => resolveExplorerDir() || activeRoot || "",
+    [resolveExplorerDir, activeRoot],
+  );
+
+  const effectiveFileSearchScopePath = useMemo(() => {
+    if (fileSearchScopeMode === "custom") {
+      const raw = fileSearchScopePath.trim();
+      if (!raw) return "";
+      if (!activeRoot || isAbsoluteFsPath(raw)) return raw;
+      return joinPath(activeRoot, raw.replace(/^[\\/]+/, ""));
+    }
+    if (fileSearchScopeMode === "current") {
+      return currentExplorerDir || activeRoot || "";
+    }
+    return activeRoot || "";
+  }, [fileSearchScopeMode, fileSearchScopePath, currentExplorerDir, activeRoot]);
+
+  useEffect(() => {
+    setFileSearchScopeMode("root");
+    setFileSearchScopePath(activeRoot || "");
+  }, [activeRoot]);
+
+  const handleRunFileSearch = useCallback(async () => {
+    const query = fileSearchQuery.trim();
+    const scopePath = effectiveFileSearchScopePath.trim();
+    if (!query) {
+      setFileSearchExecuted(false);
+      setFileSearchError("");
+      setFileSearchResults([]);
+      setFileSearchTruncated(false);
+      return;
+    }
+    if (!scopePath) {
+      setFileSearchLoading(false);
+      setFileSearchExecuted(true);
+      setFileSearchError(t("请先选择搜索目录"));
+      setFileSearchResults([]);
+      setFileSearchTruncated(false);
+      return;
+    }
+    setFileSearchLoading(true);
+    setFileSearchError("");
+    try {
+      const res = await apiSearch(scopePath, query, fileSearchMode, 100);
+      setFileSearchResults(res.results || []);
+      setFileSearchTruncated(Boolean(res.truncated));
+      setFileSearchExecuted(true);
+    } catch (e: any) {
+      setFileSearchResults([]);
+      setFileSearchTruncated(false);
+      setFileSearchExecuted(true);
+      setFileSearchError(e?.message ?? String(e));
+    } finally {
+      setFileSearchLoading(false);
+    }
+  }, [effectiveFileSearchScopePath, fileSearchMode, fileSearchQuery, t]);
 
   const handleUploadClick = useCallback(() => {
     if (!activeRoot || isUploading) return;
@@ -4615,7 +4653,7 @@ export function App() {
             </button>
           </div>
           <div className="fileSearchPanelMeta">
-            {t("搜索范围：{path}", { path: activeRoot || "-" })}
+            {t("搜索范围：{path}", { path: effectiveFileSearchScopePath || "-" })}
           </div>
           <form
             className="fileSearchForm"
@@ -4624,6 +4662,69 @@ export function App() {
               void handleRunFileSearch();
             }}
           >
+            <div className="segmented fileSearchModeSegmented" role="tablist" aria-label={t("搜索位置")}>
+              <button
+                type="button"
+                className={"segBtn" + (fileSearchScopeMode === "root" ? " segBtnActive" : "")}
+                onClick={() => {
+                  setFileSearchScopeMode("root");
+                  setFileSearchScopePath(activeRoot || "");
+                  setFileSearchExecuted(false);
+                  setFileSearchError("");
+                  setFileSearchResults([]);
+                  setFileSearchTruncated(false);
+                }}
+              >
+                {t("项目根目录")}
+              </button>
+              <button
+                type="button"
+                className={"segBtn" + (fileSearchScopeMode === "current" ? " segBtnActive" : "")}
+                onClick={() => {
+                  setFileSearchScopeMode("current");
+                  setFileSearchScopePath(currentExplorerDir || activeRoot || "");
+                  setFileSearchExecuted(false);
+                  setFileSearchError("");
+                  setFileSearchResults([]);
+                  setFileSearchTruncated(false);
+                }}
+                disabled={!currentExplorerDir && !activeRoot}
+                title={currentExplorerDir || activeRoot || ""}
+              >
+                {t("当前目录")}
+              </button>
+              <button
+                type="button"
+                className={"segBtn" + (fileSearchScopeMode === "custom" ? " segBtnActive" : "")}
+                onClick={() => {
+                  setFileSearchScopeMode("custom");
+                  setFileSearchScopePath(currentExplorerDir || activeRoot || "");
+                  setFileSearchExecuted(false);
+                  setFileSearchError("");
+                  setFileSearchResults([]);
+                  setFileSearchTruncated(false);
+                }}
+                disabled={!activeRoot}
+              >
+                {t("自定义目录")}
+              </button>
+            </div>
+            <div className="fileSearchInputRow">
+              <input
+                className="input fileSearchInput"
+                value={fileSearchScopeMode === "custom" ? fileSearchScopePath : effectiveFileSearchScopePath}
+                placeholder={t("输入目录路径，例如 codesentinal/apps/web")}
+                aria-label={t("目录路径")}
+                onChange={(e) => {
+                  setFileSearchScopeMode("custom");
+                  setFileSearchScopePath(e.target.value);
+                  setFileSearchExecuted(false);
+                  setFileSearchError("");
+                  setFileSearchResults([]);
+                  setFileSearchTruncated(false);
+                }}
+              />
+            </div>
             <div className="segmented fileSearchModeSegmented" role="tablist" aria-label={t("搜索模式")}>
               <button
                 type="button"
@@ -4672,7 +4773,7 @@ export function App() {
               <button
                 type="submit"
                 className="btn"
-                disabled={!activeRoot || !fileSearchQuery.trim() || fileSearchLoading}
+                disabled={!effectiveFileSearchScopePath || !fileSearchQuery.trim() || fileSearchLoading}
               >
                 {fileSearchLoading ? t("搜索中…") : t("搜索")}
               </button>
@@ -4680,7 +4781,7 @@ export function App() {
           </form>
           {!fileSearchExecuted && !fileSearchLoading ? (
             <div className="fileSearchHint">
-              {t("可按文件名或文件内容搜索当前项目。")}
+              {t("可按文件名或文件内容搜索当前范围。")}
             </div>
           ) : null}
         </div>
