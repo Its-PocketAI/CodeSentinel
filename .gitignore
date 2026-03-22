@@ -50,6 +50,9 @@ run/*.pid
 # Local runtime sandbox (legacy)
 code-sentinal/
 
+# Local issue notes / validation writeups
+docs/issues/
+
 # Agent runtime buffers
 data/agent-buffers/
 
