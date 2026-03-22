@@ -56,6 +56,8 @@ It is optimized for mobile + desktop, and designed for persistent terminal workf
 curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash
 ```
 
+The bootstrap script is fetched from `main`, but by default it installs the latest stable Git tag. If no stable tag exists yet, it falls back to `main`.
+
 ### Mainland China profile (`--for-user zh`)
 
 ```bash
@@ -84,9 +86,17 @@ curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/inst
   CODESENTINEL_DIR=/opt/data/CodeSentinal CODESENTINEL_START=0 bash
 ```
 
+### Pin a specific version tag
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | \
+  CODESENTINEL_VERSION=v0.0.1 bash
+```
+
 Available env vars:
 - `CODESENTINEL_REPO` (default: `https://github.com/Its-PocketAI/CodeSentinel.git`)
-- `CODESENTINEL_BRANCH` (default: `main`)
+- `CODESENTINEL_VERSION` (default: `latest`, meaning latest stable tag such as `v0.0.1`)
+- `CODESENTINEL_BRANCH` (optional branch override; when set, branch mode is used instead of tag mode)
 - `CODESENTINEL_DIR` (default: `~/CodeSentinel`)
 - `CODESENTINEL_START` (`1` auto-start, `0` skip start)
 - `CODESENTINEL_INTERACTIVE` (`auto`/`1`/`0`, default: `auto`)
@@ -177,21 +187,42 @@ What the update script does:
 - Checks `git` / `pnpm` availability.
 - Verifies the repo is clean (fails fast if there are local uncommitted changes).
 - Stops production service.
-- Fetches and pulls latest code (`git pull --ff-only`).
+- By default, fetches the latest stable tag and checks out that version.
+- If no stable tag exists, falls back to branch update mode.
 - Runs `pnpm install --frozen-lockfile`.
 - Restarts production service.
 
 Optional update env vars:
 - `CODESENTINEL_UPDATE_REMOTE` (default `origin`)
-- `CODESENTINEL_UPDATE_BRANCH` (default current branch, fallback `main`)
+- `CODESENTINEL_UPDATE_TAG` (default `latest`; set `v0.0.1` to pin a tag)
+- `CODESENTINEL_UPDATE_MODE` (`tag` by default; set `branch` to keep following a branch)
+- `CODESENTINEL_UPDATE_BRANCH` (branch name when branch mode is used; default current branch, fallback `main`)
 - `CODESENTINEL_UPDATE_ALLOW_DIRTY=1` (skip clean-working-tree check)
+
+Examples:
+
+```bash
+cd /opt/data/CodeSentinal
+./run/update.sh
+```
+
+```bash
+cd /opt/data/CodeSentinal
+CODESENTINEL_UPDATE_TAG=v0.0.1 ./run/update.sh
+```
+
+```bash
+cd /opt/data/CodeSentinal
+CODESENTINEL_UPDATE_MODE=branch CODESENTINEL_UPDATE_BRANCH=main ./run/update.sh
+```
 
 Manual commands (if you prefer no script):
 
 ```bash
 cd /opt/data/CodeSentinal
 ./run/prod-stop.sh
-git pull --ff-only
+git fetch origin --tags
+git checkout --detach "$(git tag --sort=version:refname --list 'v*' | tail -n1)"
 pnpm install --frozen-lockfile
 ./run/prod-start.sh
 ```

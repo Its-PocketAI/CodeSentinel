@@ -8,7 +8,8 @@ set -euo pipefail
 #
 # Optional env vars:
 #   CODESENTINEL_REPO   (default: https://github.com/Its-PocketAI/CodeSentinel.git)
-#   CODESENTINEL_BRANCH (default: main)
+#   CODESENTINEL_VERSION (default: latest; installs latest stable tag such as v0.0.1)
+#   CODESENTINEL_BRANCH (optional branch override; when set, branch mode is used instead of tag mode)
 #   CODESENTINEL_DIR    (default: $HOME/CodeSentinel)
 #   CODESENTINEL_START  (default: 1; set 0 to skip auto start)
 #   CODESENTINEL_INTERACTIVE (default: auto; 1=force prompt, 0=skip prompt)
@@ -20,6 +21,11 @@ set -euo pipefail
 #   CODESENTINEL_ZH_NPM_REGISTRY (default: https://registry.npmmirror.com)
 
 REPO_URL="${CODESENTINEL_REPO:-https://github.com/Its-PocketAI/CodeSentinel.git}"
+VERSION_RAW="${CODESENTINEL_VERSION:-latest}"
+BRANCH_SET=0
+if [[ -n "${CODESENTINEL_BRANCH+x}" ]]; then
+  BRANCH_SET=1
+fi
 BRANCH="${CODESENTINEL_BRANCH:-main}"
 INSTALL_DIR="${CODESENTINEL_DIR:-$HOME/CodeSentinel}"
 AUTO_START="${CODESENTINEL_START:-1}"
@@ -29,6 +35,8 @@ ZH_NPM_REGISTRY="${CODESENTINEL_ZH_NPM_REGISTRY:-https://registry.npmmirror.com}
 CFG_PATH="config/config.json"
 TTY_DEV=""
 INSTALL_ENV_VARS=()
+TARGET_KIND=""
+TARGET_REF=""
 
 if [[ -r /dev/tty && -w /dev/tty ]]; then
   TTY_DEV="/dev/tty"
@@ -101,7 +109,7 @@ print_usage() {
 CodeSentinel installer
 
 Usage:
-  install.sh [--for-user <profile>]
+  install.sh [--for-user <profile>] [--version <tag>] [--branch <branch>]
 
 Profiles:
   global          Default global profile (no mirror override)
@@ -110,8 +118,11 @@ Profiles:
 Examples:
   curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash
   curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash -s -- --for-user=zh
+  curl -fsSL https://raw.githubusercontent.com/Its-PocketAI/CodeSentinel/main/install.sh | bash -s -- --version=v0.0.1
 
 Environment:
+  CODESENTINEL_VERSION=latest
+  CODESENTINEL_BRANCH=main
   CODESENTINEL_FOR_USER=zh
   CODESENTINEL_ZH_NPM_REGISTRY=https://registry.npmmirror.com
 EOF
@@ -134,6 +145,61 @@ normalize_for_user_profile() {
   esac
 }
 
+normalize_tag_ref() {
+  local raw="${1:-}"
+  raw="${raw//[[:space:]]/}"
+  [[ -n "$raw" ]] || die "empty tag value"
+  if [[ "$raw" == v* ]]; then
+    printf '%s' "$raw"
+  else
+    printf 'v%s' "$raw"
+  fi
+}
+
+resolve_latest_tag_from_repo() {
+  local repo="$1"
+  local tags
+  tags="$(git ls-remote --tags --refs --sort='version:refname' "$repo" 2>/dev/null | awk '{print $2}' | sed 's#refs/tags/##' | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' || true)"
+  [[ -n "$tags" ]] || return 1
+  printf '%s\n' "$tags" | tail -n 1
+}
+
+resolve_checkout_target() {
+  if [[ "$BRANCH_SET" == "1" ]]; then
+    TARGET_KIND="branch"
+    TARGET_REF="$BRANCH"
+    return
+  fi
+
+  local requested="${VERSION_RAW:-latest}"
+  if [[ -z "$requested" || "$requested" == "latest" ]]; then
+    local latest_tag=""
+    latest_tag="$(resolve_latest_tag_from_repo "$REPO_URL" || true)"
+    if [[ -n "$latest_tag" ]]; then
+      TARGET_KIND="tag"
+      TARGET_REF="$latest_tag"
+      return
+    fi
+    TARGET_KIND="branch"
+    TARGET_REF="$BRANCH"
+    return
+  fi
+
+  TARGET_KIND="tag"
+  TARGET_REF="$(normalize_tag_ref "$requested")"
+}
+
+checkout_target_ref() {
+  local repo_dir="$1"
+  if [[ "$TARGET_KIND" == "tag" ]]; then
+    git -C "$repo_dir" fetch origin "refs/tags/$TARGET_REF:refs/tags/$TARGET_REF"
+    git -C "$repo_dir" checkout --detach "$TARGET_REF"
+  else
+    git -C "$repo_dir" fetch --depth 1 origin "$TARGET_REF"
+    git -C "$repo_dir" checkout -B "$TARGET_REF" "origin/$TARGET_REF"
+  fi
+}
+
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -144,6 +210,24 @@ parse_args() {
         ;;
       --for-user=*)
         FOR_USER_PROFILE="${1#*=}"
+        ;;
+      --version)
+        shift
+        [[ $# -gt 0 ]] || die "--version requires a value (for example: v0.0.1)"
+        VERSION_RAW="$1"
+        ;;
+      --version=*)
+        VERSION_RAW="${1#*=}"
+        ;;
+      --branch)
+        shift
+        [[ $# -gt 0 ]] || die "--branch requires a value"
+        BRANCH="$1"
+        BRANCH_SET=1
+        ;;
+      --branch=*)
+        BRANCH="${1#*=}"
+        BRANCH_SET=1
         ;;
       -h|--help)
         print_usage
@@ -190,6 +274,14 @@ require_cmd git
 require_cmd bash
 require_cmd node
 
+resolve_checkout_target
+
+if [[ "$TARGET_KIND" == "tag" ]]; then
+  log "install source: stable tag $TARGET_REF"
+else
+  log "install source: branch $TARGET_REF"
+fi
+
 NODE_MAJOR="$(node -p "process.versions.node.split('.')[0]")"
 if [[ ! "$NODE_MAJOR" =~ ^[0-9]+$ ]] || (( NODE_MAJOR < 18 )); then
   die "Node.js >= 18 is required (current: $(node -v))"
@@ -207,14 +299,14 @@ fi
 
 log "target directory: $INSTALL_DIR"
 if [[ -d "$INSTALL_DIR/.git" ]]; then
-  log "existing repository detected, updating..."
-  git -C "$INSTALL_DIR" fetch --depth 1 origin "$BRANCH"
-  git -C "$INSTALL_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
+  log "existing repository detected, updating target..."
+  git -C "$INSTALL_DIR" fetch --tags origin
+  checkout_target_ref "$INSTALL_DIR"
 elif [[ -d "$INSTALL_DIR" ]]; then
   die "directory exists but is not a git repository: $INSTALL_DIR"
 else
   log "cloning repository..."
-  git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+  git clone --depth 1 --branch "$TARGET_REF" "$REPO_URL" "$INSTALL_DIR"
 fi
 
 cd "$INSTALL_DIR"
