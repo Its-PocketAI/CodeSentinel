@@ -5849,7 +5849,7 @@ export function App() {
               <>
                 <div className="shortcutModalMeta">
                   <span>
-                    {t("官方来源")}: {activeShortcutDoc.sourceLabel}
+                    {t("官方来源")}: {t(activeShortcutDoc.sourceLabel)}
                   </span>
                   <a href={activeShortcutDoc.sourceUrl} target="_blank" rel="noreferrer" className="btn">
                     {t("打开官方文档")}
@@ -5857,7 +5857,7 @@ export function App() {
                 </div>
                 {activeShortcutDoc.note ? (
                   <div className="settingsHintText" style={{ marginBottom: 8 }}>
-                    {activeShortcutDoc.note}
+                    {t(activeShortcutDoc.note)}
                   </div>
                 ) : null}
                 <div className="shortcutTableWrap">
@@ -5871,8 +5871,8 @@ export function App() {
                     <tbody>
                       {activeShortcutDoc.items.map((row) => (
                         <tr key={`${row.key}-${row.action}`}>
-                          <td>{row.key}</td>
-                          <td>{row.action}</td>
+                          <td>{t(row.key)}</td>
+                          <td>{t(row.action)}</td>
                         </tr>
                       ))}
                     </tbody>

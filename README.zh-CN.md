@@ -25,6 +25,29 @@
 CodeSentinel 是一款本机优先的 Web IDE：文件树、编辑器、终端与多 AI Agent CLI（Cursor/Codex/Claude/OpenCode/Gemini/Kimi/Qwen）融合在一个控制台中。  
 重点是手机与桌面统一体验、终端会话持久化，以及后端安全策略可控。
 
+## PC 与手机模式
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/images/pc-mode.png" alt="CodeSentinel PC 模式" />
+    </td>
+    <td width="50%">
+      <img src="./docs/images/mobile-mode.png" alt="CodeSentinel 手机模式" />
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <strong>PC 模式</strong><br />
+      采用固定多面板工作区，文件树、编辑器、终端和窗口列表同时可见，并支持拖拽调整分栏，适合长时间开发使用。
+    </td>
+    <td valign="top">
+      <strong>手机模式</strong><br />
+      采用触控优先终端工作台，提供顶部页签、快捷键区、键盘开关和持久会话切换，更适合手机上的随时接入与远程操作。
+    </td>
+  </tr>
+</table>
+
 ## 安装（推荐）
 
 ### 一行安装

@@ -25,6 +25,29 @@
 CodeSentinel is a local-first Web IDE for secure project operations: file explorer, editor, and terminal sessions with multiple AI agents (Cursor CLI, Codex, Claude, OpenCode, Gemini, Kimi, Qwen).  
 It is optimized for mobile + desktop, and designed for persistent terminal workflows with strict safety controls.
 
+## Desktop and Mobile Modes
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./docs/images/pc-mode.png" alt="CodeSentinel desktop mode" />
+    </td>
+    <td width="50%">
+      <img src="./docs/images/mobile-mode.png" alt="CodeSentinel mobile mode" />
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <strong>Desktop mode</strong><br />
+      Fixed multi-panel workspace for files, editor, terminal, and window list. Resizable splits keep the layout stable for long coding sessions.
+    </td>
+    <td valign="top">
+      <strong>Mobile mode</strong><br />
+      Touch-first terminal cockpit with top tabs, quick keys, keyboard toggle, and persistent session switching tuned for phone workflows.
+    </td>
+  </tr>
+</table>
+
 ## Install (Recommended)
 
 ### One-line installer
