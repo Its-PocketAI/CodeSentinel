@@ -33,7 +33,7 @@ It is optimized for mobile + desktop, and designed for persistent terminal workf
       <img src="./docs/images/pc-mode.png" alt="CodeSentinel desktop mode" />
     </td>
     <td width="50%">
-      <img src="./docs/images/mobile-mode.png" alt="CodeSentinel mobile mode" width="56%" />
+      <img src="./docs/images/mobile-mode.png" alt="CodeSentinel mobile mode" width="36%" />
     </td>
   </tr>
   <tr>
@@ -322,10 +322,10 @@ Security note:
 
 Actual behavior of `./run/prod-start.sh` and `./run/dev-start.sh`:
 
-| Startup identity | Terminal default user | Auto-create user | `projectUsers[]` behavior |
-| --- | --- | --- | --- |
-| Start as `root` | `CODESENTINEL_DEFAULT_USER` -> `config.defaultProjectUser` -> `codesentinel` | Yes (except when target is `root`) | Effective when target user exists and has permission |
-| Start as non-root | Current OS login user (`$USER`) | No | Cannot elevate; rules requiring other users are ignored |
+| Startup identity  | Terminal default user                                                        | Auto-create user                   | `projectUsers[]` behavior                               |
+| ----------------- | ---------------------------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------- |
+| Start as `root`   | `CODESENTINEL_DEFAULT_USER` -> `config.defaultProjectUser` -> `codesentinel` | Yes (except when target is `root`) | Effective when target user exists and has permission    |
+| Start as non-root | Current OS login user (`$USER`)                                              | No                                 | Cannot elevate; rules requiring other users are ignored |
 
 Notes:
 - Root mode supports dedicated per-project users and can create the default user automatically.
