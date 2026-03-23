@@ -2400,6 +2400,8 @@ export function App() {
 
     const isPty = termSessionIsPtyRef.current;
     if (!isPty) {
+      // Non-PTY fallback sessions need local echo because the backend only returns command output.
+      // PTY-backed sessions already echo printable keys and control edits on their own.
       const isEnter = data === "\r" || data === "\n" || data === "\r\n";
       if (termModeRef.current === "restricted") {
         if (data === "\t") {
@@ -2425,9 +2427,6 @@ export function App() {
         termInputBufRef.current += data;
         term.write(data);
       }
-    } else {
-      if (data === "\u007f" || data === "\b") term.write("\b \b");
-      else term.write(data);
     }
 
     void sendTermPayload(data, { echoErrorToTerminal: true });
