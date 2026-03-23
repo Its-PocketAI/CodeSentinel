@@ -100,6 +100,7 @@ export class TermManager {
   constructor(
     private opts: {
       maxSessions: number;
+      policyMode: () => "allowlist" | "denylist";
       whitelist: CommandWhitelist;
       denylist: string[];
       limits: Limits;
@@ -294,8 +295,7 @@ export class TermManager {
 
     // Enforce policy checks before handling any built-in command.
     // This keeps `pwd/cd/ls` behavior consistent with custom commands.
-    const whitelistKeys = Object.keys(this.opts.whitelist ?? {});
-    if (whitelistKeys.length > 0 && !this.opts.whitelist[cmd]) {
+    if (this.opts.policyMode() === "allowlist" && !this.opts.whitelist[cmd]) {
       this.opts.send({ t: "term.data", sessionId: s.id, data: `\r\n[blocked] Command not allowed: ${cmd}\r\n` });
       this.opts.send({ t: "term.exit", sessionId: s.id, code: 127 });
       return;

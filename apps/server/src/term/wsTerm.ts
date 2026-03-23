@@ -7,6 +7,7 @@ import { TermManager } from "./session.js";
 import { NativeShellManager } from "./nativeShellManager.js";
 import { CodexManager } from "./codexManager.js";
 import { PtyCodexManager } from "./ptyCodexManager.js";
+import { PtyRestrictedManager } from "./ptyRestrictedManager.js";
 import { CursorCliManager } from "./cursorCliManager.js";
 import { ClaudeCliManager } from "./claudeCliManager.js";
 import { OpencodeCliManager } from "./opencodeCliManager.js";
@@ -61,6 +62,7 @@ function safeJsonParse(text: string): any | null {
 export function attachTermWs(opts: {
   server: http.Server;
   path: string;
+  commandMode: () => "allowlist" | "denylist";
   whitelist: CommandWhitelist;
   denylist: string[];
   limits: Limits;
@@ -154,11 +156,22 @@ export function attachTermWs(opts: {
   // Global managers (shared across websocket connections).
   const term = new TermManager({
     maxSessions: opts.maxSessions,
+    policyMode: opts.commandMode,
     whitelist: opts.whitelist,
     denylist: opts.denylist,
     limits: opts.limits,
     validateCwd: opts.validateCwd,
     send: (m) => broadcast(m as TermServerMsg),
+  });
+  const restrictedPtyMgr = new PtyRestrictedManager({
+    maxSessions: opts.maxSessions,
+    policyMode: opts.commandMode,
+    whitelist: () => Object.keys(opts.whitelist ?? {}),
+    denylist: () => [...opts.denylist],
+    maxOutputBytes: () => opts.limits.maxOutputBytes,
+    validateCwd: opts.validateCwd,
+    send: (m) => broadcast(m as TermServerMsg),
+    termLogMaxBytes: opts.termLogMaxBytes,
   });
   const nativeMgr = new NativeShellManager({
     maxSessions: opts.maxSessions,
@@ -304,17 +317,34 @@ export function attachTermWs(opts: {
           const realCwd = await opts.validateCwd(cwd);
           const runAs = opts.resolveRunAs ? opts.resolveRunAs(realCwd) : null;
           if (mode === "restricted") {
-            const s = term.open(realCwd, cols, rows, runAs);
-            registerSession(s.id, s.cwd, "restricted-exec", term, ws);
-            send(ws, {
-              t: "term.open.resp",
-              reqId,
-              ok: true,
-              sessionId: s.id,
-              cwd: s.cwd,
-              mode: "restricted-exec",
-            });
-            send(ws, { t: "term.data", sessionId: s.id, data: `$ cd ${s.cwd}\r\n$ ` });
+            try {
+              const s = await restrictedPtyMgr.open(realCwd, cols, rows, runAs);
+              registerSession(s.id, s.cwd, "restricted-pty", restrictedPtyMgr, ws);
+              send(ws, {
+                t: "term.open.resp",
+                reqId,
+                ok: true,
+                sessionId: s.id,
+                cwd: s.cwd,
+                mode: "restricted-pty",
+              });
+            } catch (e: any) {
+              const s = term.open(realCwd, cols, rows, runAs);
+              registerSession(s.id, s.cwd, "restricted-exec", term, ws);
+              send(ws, {
+                t: "term.open.resp",
+                reqId,
+                ok: true,
+                sessionId: s.id,
+                cwd: s.cwd,
+                mode: "restricted-exec",
+              });
+              send(ws, {
+                t: "term.data",
+                sessionId: s.id,
+                data: `\r\n[restricted] PTY unavailable, using exec mode: ${formatTerminalError(e)}\r\n$ cd ${s.cwd}\r\n$ `,
+              });
+            }
           } else if (mode === "native") {
             const s = nativeMgr.open(realCwd, cols, rows, runAs);
             registerSession(s.id, s.cwd, "native", nativeMgr, ws);
@@ -395,7 +425,7 @@ export function attachTermWs(opts: {
           if (!sessionId) return fail("term.attach", "Missing sessionId");
           const meta = sessionMeta.get(sessionId);
           if (!meta) return fail("term.attach", "Session not found");
-          if (meta.mode === "native" || meta.mode === "restricted-pty") {
+          if (meta.mode === "native") {
             const owner = sessionOwners.get(sessionId);
             if (owner) {
               try {

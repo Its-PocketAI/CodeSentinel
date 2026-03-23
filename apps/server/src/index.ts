@@ -739,6 +739,7 @@ async function main() {
   };
 
   const commandRuntime = {
+    mode: defaultCommandSettings.mode as "allowlist" | "denylist",
     whitelist: {} as Record<string, { title?: string }>,
     denylist: [] as string[],
     limits: { timeoutSec, maxOutputBytes: maxOutputKB * 1024 },
@@ -746,6 +747,7 @@ async function main() {
   };
 
   const applyCommandSettings = (settings: ReturnType<typeof normalizeCommandSettings>) => {
+    commandRuntime.mode = settings.mode;
     commandRuntime.limits.timeoutSec = settings.timeoutSec;
     commandRuntime.limits.maxOutputBytes = settings.maxOutputKB * 1024;
     commandRuntime.sessionPolicy.idleTtlMs = settings.sessionIdleHours * 3600 * 1000;
@@ -2419,6 +2421,7 @@ async function main() {
   attachTermWs({
     server,
     path: "/ws/term",
+    commandMode: () => commandRuntime.mode,
     whitelist: commandRuntime.whitelist,
     denylist: commandRuntime.denylist,
     maxSessions,

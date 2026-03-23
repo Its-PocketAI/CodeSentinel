@@ -367,7 +367,7 @@ function listToText(list: string[]): string {
 }
 
 function isLegacyRestrictedSessionMode(mode?: string | null) {
-  return mode === "native" || mode === "restricted-pty";
+  return mode === "native";
 }
 
 function normalizeUiState(input: UiState | null | undefined): UiState {
@@ -4125,20 +4125,11 @@ export function App() {
 
         const resp = await client.open(openCwd, term.cols, term.rows, actualMode);
         if (!resp.ok || !resp.sessionId) throw new Error(resp.error ?? t("终端会话打开失败"));
+        const mappedOpenMode = mapSessionMode(resp.mode ?? actualMode);
         termSessionIdRef.current = resp.sessionId;
-        termSessionModeRef.current = actualMode;
+        termSessionModeRef.current = mappedOpenMode.sessionMode;
         termCwdRef.current = resp.cwd || openCwd;
-        const isPtySession =
-          actualMode === "codex" ||
-          actualMode === "claude" ||
-          actualMode === "opencode" ||
-          actualMode === "gemini" ||
-          actualMode === "kimi" ||
-          actualMode === "qwen" ||
-          actualMode === "cursor-cli-agent" ||
-          actualMode === "cursor-cli-plan" ||
-          actualMode === "cursor-cli-ask";
-        termSessionIsPtyRef.current = isPtySession;
+        termSessionIsPtyRef.current = mappedOpenMode.isPty;
         lastOpenKeyRef.current = buildOpenKey(openCwd, termModeRef.current, cursorCliModeRef.current);
         cursorPromptNudgedRef.current = false;
         if (uiMode === "restricted") {
