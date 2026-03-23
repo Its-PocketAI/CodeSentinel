@@ -43,6 +43,44 @@ export type TermCloseResp = OkResp<"term.close"> | ErrResp<"term.close">;
 
 export type TermDataEvt = { t: "term.data"; sessionId: string; data: string };
 export type TermExitEvt = { t: "term.exit"; sessionId: string; code?: number };
+export type SessionEventLevel = "info" | "success" | "warning" | "error";
+export type SessionEventConfidence = "high" | "medium" | "low";
+export type SessionEventKind =
+  | "session.opened"
+  | "session.attached"
+  | "session.activity"
+  | "session.completed"
+  | "session.exited"
+  | "session.closed"
+  | "session.idle-timeout"
+  | "attention.approval"
+  | "attention.error"
+  | "artifact.diff";
+export type SessionEventEvt = {
+  t: "session.event";
+  eventId: string;
+  seq: number;
+  sessionId: string;
+  ts: number;
+  kind: SessionEventKind;
+  source: "server" | "parser";
+  level?: SessionEventLevel;
+  confidence?: SessionEventConfidence;
+  mode?: string;
+  cwd?: string;
+  title?: string;
+  detail?: string;
+  action?: "open-session" | "resume-session" | "view-replay" | "view-artifacts";
+  data?: { [k: string]: JsonValue };
+};
 
 export type TermClientMsg = TermOpenReq | TermAttachReq | TermStdinReq | TermResizeReq | TermCloseReq;
-export type TermServerMsg = TermOpenResp | TermAttachResp | TermStdinResp | TermResizeResp | TermCloseResp | TermDataEvt | TermExitEvt;
+export type TermServerMsg =
+  | TermOpenResp
+  | TermAttachResp
+  | TermStdinResp
+  | TermResizeResp
+  | TermCloseResp
+  | TermDataEvt
+  | TermExitEvt
+  | SessionEventEvt;

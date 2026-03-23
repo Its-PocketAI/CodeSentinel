@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getDataDir } from "../paths.js";
+import { getTermSessionDataDir } from "./sessionPaths.js";
 
 const sizeCache = new Map<string, number>();
 
 export function initSessionRecording(sessionId: string): string {
-  const controlDir = path.join(getDataDir(), "term", sessionId);
+  const controlDir = getTermSessionDataDir(sessionId);
   fs.mkdirSync(controlDir, { recursive: true });
   const stdoutPath = path.join(controlDir, "stdout");
   if (!fs.existsSync(stdoutPath)) {
@@ -50,11 +50,12 @@ export type SessionMeta = {
   cwd?: string;
   mode?: string;
   createdAt?: number;
+  controlDir?: string;
 };
 
 export function writeSessionMeta(sessionId: string, meta: SessionMeta): void {
   try {
-    const controlDir = path.join(getDataDir(), "term", sessionId);
+    const controlDir = getTermSessionDataDir(sessionId);
     fs.mkdirSync(controlDir, { recursive: true });
     const metaPath = path.join(controlDir, "meta.json");
     const payload = { ...meta, createdAt: meta.createdAt ?? Date.now() };
@@ -64,7 +65,7 @@ export function writeSessionMeta(sessionId: string, meta: SessionMeta): void {
 
 export function readSessionMeta(sessionId: string): SessionMeta | null {
   try {
-    const metaPath = path.join(getDataDir(), "term", sessionId, "meta.json");
+    const metaPath = path.join(getTermSessionDataDir(sessionId), "meta.json");
     if (!fs.existsSync(metaPath)) return null;
     const raw = fs.readFileSync(metaPath, "utf8");
     const parsed = JSON.parse(raw) as SessionMeta;

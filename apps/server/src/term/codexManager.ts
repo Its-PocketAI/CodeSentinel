@@ -1,8 +1,8 @@
 import fs from "node:fs";
-import path from "node:path";
 import { execa } from "execa";
 import { buildRunAsEnv, type RunAsUser } from "../userRunAs.js";
 import type { Limits } from "./session.js";
+import { buildCliPath, resolveCliBinary, resolveCliSpawnCommand, selectCliRuntime } from "./cliRuntime.js";
 
 export type TermSend = (msg: any) => void;
 
@@ -15,6 +15,8 @@ type CodexSession = {
   queue: string[];
   running: boolean;
   child?: ReturnType<typeof execa>;
+  binPath: string;
+  pathEnv: string;
   runAs?: RunAsUser | null;
 };
 
@@ -28,52 +30,12 @@ function clampChunk(text: string, maxBytesLeft: number) {
   return { text: buf.subarray(0, maxBytesLeft).toString("utf8"), bytes: maxBytesLeft, truncated: true };
 }
 
-function fileExists(p: string) {
-  try {
-    // On Windows, check if file exists (no X_OK needed)
-    if (process.platform === "win32") {
-      return fs.existsSync(p);
-    }
-    fs.accessSync(p, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function which(binName: string): Promise<string | null> {
-  try {
-    // On Windows, use where.exe instead of which
-    const cmd = process.platform === "win32" ? "where.exe" : "which";
-    const r = await execa(cmd, [binName]);
-    const p = r.stdout.trim().split("\n")[0]; // Take first result on Windows
-    if (p && fileExists(p)) return p;
-  } catch {}
-  return null;
-}
-
-async function resolveCodexBin(): Promise<string> {
-  const override = process.env.CODEX_BIN;
-  if (override && fileExists(override)) return override;
-
-  // Try Windows-specific npm global location first (more reliable)
-  if (process.platform === "win32") {
-    const npmPrefix = process.env.APPDATA || process.env.LOCALAPPDATA || "";
-    if (npmPrefix) {
-      const winCodex = path.join(npmPrefix, "npm", "codex.cmd");
-      if (fileExists(winCodex)) return winCodex;
-      
-      // Also try without .cmd extension
-      const winCodexNoExt = path.join(npmPrefix, "npm", "codex");
-      if (fileExists(winCodexNoExt)) return winCodexNoExt;
-    }
-  }
-  
-  // Try to find codex in PATH
-  const codex = await which("codex");
-  if (codex) return codex;
-
-  throw new Error('Cannot find "codex". Install it with: npm i -g @openai/codex or set CODEX_BIN=/absolute/path/to/codex.');
+async function resolveCodexBin(runAs?: RunAsUser | null) {
+  return await resolveCliBinary({
+    binName: "codex",
+    runAs: runAs ?? null,
+    overrideBin: process.env.CODEX_BIN,
+  });
 }
 
 export class CodexManager {
@@ -95,8 +57,25 @@ export class CodexManager {
   async open(cwd: string, cols = 120, rows = 30, runAs?: RunAsUser | null) {
     if (this.sessions.size >= this.opts.maxSessions) throw new Error("Too many sessions");
     const realCwd = await this.opts.validateCwd(cwd);
+    const runtime = await selectCliRuntime({
+      displayName: "Codex",
+      runAs,
+      smokeArgs: ["--version"],
+      resolveBin: resolveCodexBin,
+    });
     const id = `x_${randomId()}`;
-    const s: CodexSession = { id, cwd: realCwd, cols, rows, lineBuf: "", queue: [], running: false, runAs };
+    const s: CodexSession = {
+      id,
+      cwd: realCwd,
+      cols,
+      rows,
+      lineBuf: "",
+      queue: [],
+      running: false,
+      binPath: runtime.binPath,
+      pathEnv: runtime.pathEnv,
+      runAs: runtime.runAs,
+    };
     this.sessions.set(id, s);
     this.opts.send({
       t: "term.data",
@@ -104,6 +83,7 @@ export class CodexManager {
       data:
         `[codex] ready (non-interactive exec mode)\r\n` +
         `[codex] cwd: ${realCwd}\r\n` +
+        (runtime.notice ? `[codex] ${runtime.notice}\r\n` : "") +
         `Type your instruction, press Enter.\r\n`,
     });
     return s;
@@ -163,12 +143,12 @@ export class CodexManager {
       return;
     }
 
-    const codexBin = await resolveCodexBin();
     const timeoutMs = Math.max(1, this.opts.limits.timeoutSec) * 1000;
     let bytesLeft = this.opts.limits.maxOutputBytes;
+    const spawn = resolveCliSpawnCommand(s.binPath);
 
     // Use `codex exec` which is designed for non-interactive runs.
-    const child = execa(codexBin, ["exec", "--skip-git-repo-check", line], {
+    const child = execa(spawn.cmd, [...spawn.args, "exec", "--skip-git-repo-check", line], {
       cwd: s.cwd,
       timeout: timeoutMs,
       all: true,
@@ -176,6 +156,7 @@ export class CodexManager {
       stdin: "ignore",
       env: buildRunAsEnv({
         ...process.env,
+        PATH: buildCliPath(s.binPath, s.runAs ?? null, s.pathEnv),
         FORCE_COLOR: "0",
       }, s.runAs ?? null),
       uid: s.runAs?.uid,

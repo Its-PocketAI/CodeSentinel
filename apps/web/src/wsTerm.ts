@@ -11,7 +11,34 @@ export type TermServerMsg =
   | { t: "term.close.resp"; reqId: string; ok: true }
   | { t: "term.close.resp"; reqId: string; ok: false; error: string }
   | { t: "term.data"; sessionId: string; data: string }
-  | { t: "term.exit"; sessionId: string; code?: number };
+  | { t: "term.exit"; sessionId: string; code?: number }
+  | {
+      t: "session.event";
+      eventId: string;
+      seq: number;
+      sessionId: string;
+      ts: number;
+      kind:
+        | "session.opened"
+        | "session.attached"
+        | "session.activity"
+        | "session.completed"
+        | "session.exited"
+        | "session.closed"
+        | "session.idle-timeout"
+        | "attention.approval"
+        | "attention.error"
+        | "artifact.diff";
+      source: "server" | "parser";
+      level?: "info" | "success" | "warning" | "error";
+      confidence?: "high" | "medium" | "low";
+      mode?: string;
+      cwd?: string;
+      title?: string;
+      detail?: string;
+      action?: "open-session" | "resume-session" | "view-replay" | "view-artifacts";
+      data?: Record<string, unknown>;
+    };
 
 function resolveWsUrl(): string {
   const loc = window.location;
@@ -63,6 +90,7 @@ export class TermClient {
   >();
   private outbox: string[] = [];
   onMsg?: (msg: TermServerMsg) => void;
+  onConnectionChange?: (connected: boolean) => void;
   debug = false;
 
   private log(..._args: any[]) {
@@ -94,6 +122,7 @@ export class TermClient {
       };
       ws.onopen = () => {
         this.log("ws.onopen");
+        this.onConnectionChange?.(true);
         const queued = this.outbox;
         this.outbox = [];
         for (const m of queued) ws.send(m);
@@ -101,11 +130,13 @@ export class TermClient {
       };
       ws.onerror = (ev) => {
         this.log("ws.onerror", ev);
+        this.onConnectionChange?.(false);
         done(false, new Error("ws error"));
       };
       ws.onclose = (ev) => {
         this.log("ws.onclose", { code: ev.code, reason: ev.reason, wasClean: ev.wasClean });
         if (this.ws === ws) this.ws = null;
+        this.onConnectionChange?.(false);
         done(false, new Error(`ws closed (${ev.code})`));
         this.rejectAllPending(`ws closed (${ev.code})`);
       };
@@ -235,6 +266,8 @@ export class TermClient {
       this.log("recv term.data", { sessionId: msg.sessionId, bytes: msg.data?.length ?? 0 });
     } else if (msg?.t === "term.exit") {
       this.log("recv term.exit", { sessionId: msg.sessionId, code: msg.code });
+    } else if (msg?.t === "session.event") {
+      this.log("recv session.event", { sessionId: msg.sessionId, kind: msg.kind, level: msg.level });
     } else if (typeof msg?.t === "string" && String(msg.t).endsWith(".resp")) {
       this.log("recv resp", { t: msg.t, reqId: msg.reqId, ok: msg.ok, error: msg.error });
     } else {

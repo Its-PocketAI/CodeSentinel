@@ -7,6 +7,7 @@ import { appendRecording, initSessionRecording, writeSessionMeta } from "./recor
 import { snapshotManager } from "./snapshotManager.js";
 import { buildRunAsEnv, type RunAsUser } from "../userRunAs.js";
 import { loadPty, type Pty } from "./ptyLoader.js";
+import { buildCliPath, resolveCliBinary, selectCliRuntime } from "./cliRuntime.js";
 
 type SendFn = (msg: TermServerMsg) => void;
 
@@ -75,11 +76,15 @@ export class CursorCliManager {
 
     const { pty, spawnOptions } = await loadPty();
 
-    // Find agent binary
-    const agentBin = this.resolveAgentBin();
-    if (!agentBin) {
-      throw new Error('Cannot find "agent" CLI. Install: curl https://cursor.com/install -fsS | bash');
-    }
+    const runtime = await selectCliRuntime({
+      displayName: "Cursor CLI",
+      runAs,
+      smokeArgs: ["--help"],
+      resolveBin: async (candidate) => {
+        const resolved = await this.resolveAgentBin(candidate);
+        return resolved ? { binPath: resolved, pathEnv: process.env.PATH ?? "" } : null;
+      },
+    });
 
     // Build args
     const args: string[] = [];
@@ -159,14 +164,11 @@ export class CursorCliManager {
       pathParts.push(path.join(os.homedir(), ".local", "bin"));
     }
     
-    // Add the current process PATH (should include system and user PATH)
-    if (process.env.PATH) {
-      pathParts.push(process.env.PATH);
-    }
+    pathParts.push(buildCliPath(runtime.binPath, runtime.runAs, runtime.pathEnv));
     
     const spawnPath = pathParts.join(path.delimiter);
 
-    const term = pty.spawn(agentBin, args, {
+    const term = pty.spawn(runtime.binPath, args, {
       name: "xterm-256color",
       cols,
       rows,
@@ -186,8 +188,8 @@ export class CursorCliManager {
         },
         runAs ?? null,
       ),
-      uid: runAs?.uid,
-      gid: runAs?.gid,
+      uid: runtime.runAs?.uid,
+      gid: runtime.runAs?.gid,
     });
 
     const sessionId = `cursor-cli-${mode}_${Math.random().toString(16).slice(2)}`;
@@ -196,6 +198,10 @@ export class CursorCliManager {
     await snapshotManager.create(sessionId, cols, rows);
     const session: Session = { id: sessionId, cwd: realCwd, mode, pty: term, stdoutPath };
     this.sessions.set(sessionId, session);
+
+    if (runtime.notice) {
+      this.send({ t: "term.data", sessionId, data: `[cursor-cli] ${runtime.notice}\r\n` });
+    }
 
     term.onData((data: string) => {
       appendRecording(stdoutPath, data, this.termLogMaxBytes);
@@ -237,9 +243,16 @@ export class CursorCliManager {
     } catch {}
   }
 
-  private resolveAgentBin(): string | null {
+  private async resolveAgentBin(runAs?: RunAsUser | null): Promise<string | null> {
     const override = process.env.AGENT_BIN;
     if (override && fileExists(override)) return override;
+
+    const resolved = await resolveCliBinary({
+      binName: "agent",
+      runAs: runAs ?? null,
+      overrideBin: override,
+    });
+    if (resolved?.binPath) return resolved.binPath;
 
     // Try Windows-specific location first
     if (process.platform === "win32") {

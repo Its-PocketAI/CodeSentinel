@@ -15,6 +15,7 @@
     "dev:web": "concurrently -n protocol,web \"pnpm --filter @codesentinel/protocol dev\" \"pnpm --filter @codesentinel/web dev\"",
     "control": "pnpm --filter @codesentinel/control dev",
     "build": "pnpm -r build",
+    "test": "vitest run",
     "start": "pnpm --filter @codesentinel/server start",
     "lint": "pnpm -r lint",
     "pm2:start": "pnpm build && pm2 start ecosystem.config.cjs",
@@ -23,6 +24,7 @@
     "pm2:logs": "pm2 logs codesentinel-server"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "vitest": "^4.1.0"
   }
 }

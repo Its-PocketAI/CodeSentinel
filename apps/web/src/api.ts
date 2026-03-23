@@ -346,7 +346,7 @@ export async function apiSetCommandSettings(settings: CommandSettings) {
 }
 
 export type UiState = {
-  mobileTab: "explorer" | "editor" | "terminal" | "windows" | "settings";
+  mobileTab: "explorer" | "editor" | "terminal" | "windows" | "artifacts" | "settings";
   leftPanelTab: "files" | "settings" | "windows";
   termMode: "cursor" | "codex" | "claude" | "opencode" | "gemini" | "kimi" | "qwen" | "cursor-cli" | "restricted";
   cursorMode: "agent" | "plan" | "ask";
@@ -359,6 +359,7 @@ export type UiState = {
   topHeight: number;
   mobileKeysVisible: boolean;
   fontSize: number;
+  controlPlaneEnabled: boolean;
 };
 
 export async function apiGetUiState() {

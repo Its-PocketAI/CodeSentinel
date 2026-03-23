@@ -1,10 +1,9 @@
 import fs from "node:fs";
-import path from "node:path";
-import { execa } from "execa";
 import { appendRecording, initSessionRecording, writeSessionMeta } from "./recording.js";
 import { snapshotManager } from "./snapshotManager.js";
 import { buildRunAsEnv, type RunAsUser } from "../userRunAs.js";
 import { loadPty, type Pty } from "./ptyLoader.js";
+import { buildCliPath, resolveCliBinary, resolveCliSpawnCommand, selectCliRuntime } from "./cliRuntime.js";
 
 export type TermSend = (msg: any) => void;
 
@@ -21,89 +20,13 @@ function randomId() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
 
-function fileExists(p: string) {
-  try {
-    if (process.platform === "win32") {
-      return fs.existsSync(p);
-    }
-    fs.accessSync(p, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function which(binName: string, envPATH?: string): Promise<string | null> {
-  try {
-    const env = envPATH != null ? { ...process.env, PATH: envPATH } : process.env;
-    const cmd = process.platform === "win32" ? "where.exe" : "which";
-    const r = await execa(cmd, [binName], { env, timeout: 3000 });
-    const p = r.stdout.trim().split("\n")[0];
-    if (p && fileExists(p)) return p;
-  } catch {}
-  return null;
-}
-
-function buildHomeCandidates(home: string | undefined | null) {
-  if (!home) return [];
-  return [
-    path.join(home, ".local", "bin"),
-    path.join(home, ".npm-global", "bin"),
-    path.join(home, ".local", "share", "pnpm"),
-  ];
-}
-
-function findInDirs(dirs: string[], exeNames: string[]): string | null {
-  for (const dir of dirs) {
-    for (const exe of exeNames) {
-      const full = path.join(dir, exe);
-      if (fileExists(full)) return full;
-    }
-  }
-  return null;
-}
-
-function findInNvm(home: string | undefined | null, exeNames: string[]): string | null {
-  if (!home) return null;
-  const base = path.join(home, ".nvm", "versions", "node");
-  try {
-    const entries = fs.readdirSync(base);
-    for (const entry of entries) {
-      for (const exe of exeNames) {
-        const full = path.join(base, entry, "bin", exe);
-        if (fileExists(full)) return full;
-      }
-    }
-  } catch {}
-  return null;
-}
-
 async function resolveGeminiBin(runAs?: RunAsUser | null, overrideBin?: string): Promise<string> {
-  const explicit = overrideBin || process.env.GEMINI_BIN;
-  if (explicit && fileExists(explicit)) return explicit;
-
-  const exeNames =
-    process.platform === "win32"
-      ? ["gemini.exe", "gemini.cmd", "gemini.bat", "gemini"]
-      : ["gemini"];
-
-  const homeDirs = Array.from(
-    new Set([process.env.HOME, process.env.USERPROFILE, runAs?.home].filter(Boolean) as string[]),
-  );
-  const extraDirs = homeDirs.flatMap(buildHomeCandidates);
-  const extraPath = [...extraDirs, process.env.PATH ?? ""].filter(Boolean).join(path.delimiter);
-
-  const gemini = await which("gemini", extraPath);
-  if (gemini) return gemini;
-
-  const direct = findInDirs(extraDirs, exeNames);
-  if (direct) return direct;
-
-  for (const home of homeDirs) {
-    const nvm = findInNvm(home, exeNames);
-    if (nvm) return nvm;
-  }
-
+  const resolved = await resolveCliBinary({
+    binName: "gemini",
+    runAs: runAs ?? null,
+    overrideBin: overrideBin || process.env.GEMINI_BIN,
+  });
+  if (resolved) return resolved;
   throw new Error('Cannot find "gemini". Install Gemini CLI or set GEMINI_BIN=/absolute/path/to/gemini.');
 }
 
@@ -130,22 +53,15 @@ export class GeminiCliManager {
     const sessionId = `gemini_${randomId()}`;
 
     const { pty, spawnOptions } = await loadPty();
-    const geminiBin = await resolveGeminiBin(runAs ?? null, this.opts.binOverride);
+    const runtime = await selectCliRuntime({
+      displayName: "Gemini CLI",
+      runAs,
+      smokeArgs: ["--version"],
+      resolveBin: (candidate) => resolveGeminiBin(candidate, this.opts.binOverride),
+    });
+    const spawn = resolveCliSpawnCommand(runtime.binPath);
 
-    const geminiReal = (() => {
-      try {
-        return fs.realpathSync(geminiBin);
-      } catch {
-        return geminiBin;
-      }
-    })();
-
-    const cmd = geminiReal.endsWith(".js") || geminiReal.endsWith(".cjs") || geminiReal.endsWith(".mjs") ? process.execPath : geminiBin;
-    const args = cmd === process.execPath ? [geminiReal] : [];
-
-    const spawnPath = [path.dirname(geminiBin), path.dirname(process.execPath), process.env.PATH ?? ""].filter(Boolean).join(path.delimiter);
-
-    const term = pty.spawn(cmd, args, {
+    const term = pty.spawn(spawn.cmd, spawn.args, {
       name: "xterm-256color",
       cols,
       rows,
@@ -153,12 +69,12 @@ export class GeminiCliManager {
       ...spawnOptions,
       env: buildRunAsEnv({
         ...process.env,
-        PATH: spawnPath,
+        PATH: buildCliPath(runtime.binPath, runtime.runAs, runtime.pathEnv),
         TERM: "xterm-256color",
         COLORTERM: process.env.COLORTERM ?? "truecolor",
-      }, runAs ?? null),
-      uid: runAs?.uid,
-      gid: runAs?.gid,
+      }, runtime.runAs),
+      uid: runtime.runAs?.uid,
+      gid: runtime.runAs?.gid,
     });
 
     const stdoutPath = initSessionRecording(sessionId);
@@ -172,6 +88,13 @@ export class GeminiCliManager {
       sessionId,
       data: `[gemini] PTY started, waiting for gemini output...\r\n`,
     });
+    if (runtime.notice) {
+      this.opts.send({
+        t: "term.data",
+        sessionId,
+        data: `[gemini] ${runtime.notice}\r\n`,
+      });
+    }
 
     term.onData((chunk: string) => {
       appendRecording(stdoutPath, chunk, this.opts.termLogMaxBytes);

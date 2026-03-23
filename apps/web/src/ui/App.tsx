@@ -44,6 +44,10 @@ import {
 } from "../api";
 import { TermClient, type TermServerMsg } from "../wsTerm";
 import { CursorChatPanel } from "./CursorChatPanel";
+import { ControlPlanePanel } from "./ControlPlanePanel";
+import { extractDiffBlocks, summarizeDiffBlocks, type ArtifactDiffBlock } from "./artifactDiff";
+import { controlPlaneStore, useControlPlaneSnapshot, type ControlPlaneAttentionItem, type ControlPlaneSessionCard } from "./controlPlaneStore";
+import { resolveSafeTerminalOpenSize } from "./terminalGeometry";
 import { useI18n } from "../i18n";
 
 type TreeNode = {
@@ -86,17 +90,26 @@ type ShortcutDoc = {
   note?: string;
   items: ShortcutDocItem[];
 };
+type TermCapability = "interactive-cli" | "interactive-secure" | "secure-command" | "restricted-terminal";
+type TermLifecycle = "no-session" | "restoring" | "creating" | "ready" | "command-complete" | "exited" | "error";
+type TermSurfaceState = {
+  lifecycle: TermLifecycle;
+  capability: TermCapability | null;
+  detail: string;
+  exitCode?: number | string | null;
+};
+type ArtifactInspectorKind = "replay" | "snapshot" | "diff";
 
 const TOOL_DEFS: { id: ToolId; label: string; desc: string }[] = [
-  { id: "cursor", label: "Cursor Chat", desc: "对话式助手（非终端）" },
-  { id: "codex", label: "Codex", desc: "交互式 CLI" },
-  { id: "claude", label: "Claude", desc: "Claude Code CLI" },
-  { id: "opencode", label: "OpenCode", desc: "OpenCode CLI" },
-  { id: "gemini", label: "Gemini", desc: "Gemini CLI" },
-  { id: "kimi", label: "Kimi", desc: "Kimi CLI" },
-  { id: "qwen", label: "Qwen", desc: "Qwen Code CLI" },
-  { id: "cursor-cli", label: "Cursor CLI", desc: "Cursor 命令行模式" },
-  { id: "command", label: "命令行", desc: "安全受限命令行" },
+  { id: "cursor", label: "Cursor Chat", desc: "对话助手：适合提问、规划和解释，不是终端" },
+  { id: "codex", label: "Codex CLI", desc: "OpenAI Codex CLI：适合改代码、执行任务、连续协作" },
+  { id: "claude", label: "Claude Code", desc: "Claude Code CLI：适合代码理解、修改和多轮执行" },
+  { id: "opencode", label: "OpenCode CLI", desc: "OpenCode CLI：在终端里直接驱动 OpenCode" },
+  { id: "gemini", label: "Gemini CLI", desc: "Gemini CLI：把输入直接发给 Gemini 命令行代理" },
+  { id: "kimi", label: "Kimi CLI", desc: "Kimi CLI：把输入直接发给 Kimi 命令行代理" },
+  { id: "qwen", label: "Qwen Code", desc: "Qwen Code CLI：把输入直接发给 Qwen 命令行代理" },
+  { id: "cursor-cli", label: "Cursor CLI", desc: "Cursor 命令行代理：在终端里以 agent / plan / ask 运行" },
+  { id: "command", label: "安全终端", desc: "安全终端：执行受限 shell 命令，比如 ls / git / pnpm，不是 AI 对话" },
 ];
 
 const DEFAULT_TOOL_SETTINGS: UiToolSetting[] = TOOL_DEFS.map((t) => ({ id: t.id, enabled: true }));
@@ -292,9 +305,10 @@ const DEFAULT_UI_STATE: UiState = {
   panelEditorCollapsed: false,
   panelTerminalCollapsed: false,
   leftWidth: 320,
-  topHeight: 49,
+  topHeight: 58,
   mobileKeysVisible: false,
   fontSize: 12,
+  controlPlaneEnabled: true,
 };
 
 const UI_FONT_MIN = 10;
@@ -322,6 +336,7 @@ function removeStored(key: string) {
 }
 
 type TermSessionRecord = { sessionId: string; cwd?: string; mode?: string };
+type TermSessionListRow = { sessionId: string; updatedAt: number; sizeBytes: number; cwd?: string; mode?: string; active?: boolean };
 type TermSessionsByMode = Partial<Record<TermMode, TermSessionRecord>>;
 
 function readSessionsByMode(): TermSessionsByMode {
@@ -372,6 +387,7 @@ function isLegacyRestrictedSessionMode(mode?: string | null) {
 
 function normalizeUiState(input: UiState | null | undefined): UiState {
   const raw = input ?? ({} as UiState);
+  const rawMobileTab = (raw as { mobileTab?: string }).mobileTab === "queue" ? "terminal" : raw.mobileTab;
   const pick = <T extends string>(val: unknown, allowed: T[], fallback: T): T =>
     typeof val === "string" && (allowed as string[]).includes(val) ? (val as T) : fallback;
   const pickBool = (val: unknown, fallback: boolean) => (typeof val === "boolean" ? val : fallback);
@@ -381,7 +397,7 @@ function normalizeUiState(input: UiState | null | undefined): UiState {
     return Math.min(max, Math.max(min, Math.round(n)));
   };
   return {
-    mobileTab: pick(raw.mobileTab, ["explorer", "editor", "terminal", "windows", "settings"], DEFAULT_UI_STATE.mobileTab),
+    mobileTab: pick(rawMobileTab, ["explorer", "editor", "terminal", "windows", "artifacts", "settings"], DEFAULT_UI_STATE.mobileTab),
     leftPanelTab: pick(raw.leftPanelTab, ["files", "settings", "windows"], DEFAULT_UI_STATE.leftPanelTab),
     termMode: pick(raw.termMode, ["cursor", "codex", "claude", "opencode", "gemini", "kimi", "qwen", "cursor-cli", "restricted"], DEFAULT_UI_STATE.termMode),
     cursorMode: pick(raw.cursorMode, ["agent", "plan", "ask"], DEFAULT_UI_STATE.cursorMode),
@@ -394,6 +410,7 @@ function normalizeUiState(input: UiState | null | undefined): UiState {
     topHeight: pickNum(raw.topHeight, DEFAULT_UI_STATE.topHeight, 20, 80),
     mobileKeysVisible: pickBool(raw.mobileKeysVisible, DEFAULT_UI_STATE.mobileKeysVisible),
     fontSize: pickNum(raw.fontSize, DEFAULT_UI_STATE.fontSize, 10, 18),
+    controlPlaneEnabled: pickBool(raw.controlPlaneEnabled, DEFAULT_UI_STATE.controlPlaneEnabled),
   };
 }
 
@@ -471,6 +488,15 @@ function stripAnsi(text: string) {
     .replace(oscRegex, "")
     .replace(ansiRegex, "")
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+}
+
+function formatArtifactSessionStatus(status: ControlPlaneSessionCard["status"] | undefined, active?: boolean) {
+  if (status === "completed") return "待继续";
+  if (status === "closed") return "已关闭";
+  if (status === "idle") return "已超时";
+  if (status === "queued") return "待启动";
+  if (status === "exited") return "已退出";
+  return active ? "运行中" : "";
 }
 
 function languageFromPath(p: string): string | null {
@@ -833,8 +859,9 @@ function TreeView(props: {
 
 export function App() {
   const { t, lang, setLang } = useI18n();
+  const controlPlaneSnapshot = useControlPlaneSnapshot();
   const [isMobile, setIsMobile] = useState(false);
-  const [mobileTab, setMobileTab] = useState<"explorer" | "editor" | "terminal" | "windows" | "settings">(DEFAULT_UI_STATE.mobileTab);
+  const [mobileTab, setMobileTab] = useState<"explorer" | "editor" | "terminal" | "windows" | "artifacts" | "settings">(DEFAULT_UI_STATE.mobileTab);
   const [mobileWorkspaceDrawerOpen, setMobileWorkspaceDrawerOpen] = useState(false);
   const [editorMode, setEditorMode] = useState<"edit" | "preview">(DEFAULT_UI_STATE.editorMode);
   const [leftWidth, setLeftWidth] = useState(DEFAULT_UI_STATE.leftWidth);
@@ -853,6 +880,7 @@ export function App() {
   const [commandMaxOutputKB, setCommandMaxOutputKB] = useState("1024");
   const [commandSessionIdleHours, setCommandSessionIdleHours] = useState("12");
   const [uiFontSize, setUiFontSize] = useState(DEFAULT_UI_STATE.fontSize);
+  const [controlPlaneEnabled, setControlPlaneEnabled] = useState(DEFAULT_UI_STATE.controlPlaneEnabled);
   type SettingsSectionKey = "tools" | "preference" | "language" | "security";
   const [settingsOpen, setSettingsOpen] = useState<Record<SettingsSectionKey, boolean>>({
     tools: true,
@@ -860,18 +888,27 @@ export function App() {
     language: true,
     security: true,
   });
-  const [termSessions, setTermSessions] = useState<
-    Array<{ sessionId: string; updatedAt: number; sizeBytes: number; cwd?: string; mode?: string; active?: boolean }>
-  >([]);
+  const [termSessions, setTermSessions] = useState<TermSessionListRow[]>([]);
   const [termSessionsLoading, setTermSessionsLoading] = useState(false);
   const [termSessionsError, setTermSessionsError] = useState<string | null>(null);
+  const [clearingArtifacts, setClearingArtifacts] = useState(false);
   const [replayOpen, setReplayOpen] = useState(false);
   const [replayText, setReplayText] = useState("");
   const [replayTitle, setReplayTitle] = useState("");
   const [replayLoading, setReplayLoading] = useState(false);
+  const [artifactKind, setArtifactKind] = useState<ArtifactInspectorKind>("replay");
+  const [artifactDiffBlocks, setArtifactDiffBlocks] = useState<ArtifactDiffBlock[]>([]);
+  const [artifactSourceLabel, setArtifactSourceLabel] = useState("");
+  const [artifactEmptyHint, setArtifactEmptyHint] = useState("");
+  const [artifactSessionId, setArtifactSessionId] = useState("");
+  const [artifactSessionMode, setArtifactSessionMode] = useState("");
+  const [artifactSessionCwd, setArtifactSessionCwd] = useState("");
+  const [artifactSessionStatus, setArtifactSessionStatus] = useState("");
+  const [termRemindersOpen, setTermRemindersOpen] = useState(false);
   const uiStateLoadedRef = useRef(false);
   const uiStateSaveTimerRef = useRef<number | null>(null);
   const settingsTouchedRef = useRef(false);
+  const prevAttentionCountRef = useRef(controlPlaneSnapshot.attention.length);
   
   // Dark mode state
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -948,6 +985,7 @@ export function App() {
         setTopHeight(next.topHeight);
         setMobileKeysVisible(next.mobileKeysVisible);
         setUiFontSize(next.fontSize);
+        setControlPlaneEnabled(next.controlPlaneEnabled);
         uiStateLoadedRef.current = true;
       })
       .catch((e: any) => {
@@ -1047,7 +1085,9 @@ export function App() {
       const res = await apiFetch("/api/term/sessions?limit=80");
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || t("加载会话失败"));
-      setTermSessions(Array.isArray(data.sessions) ? data.sessions : []);
+      const rows = Array.isArray(data.sessions) ? data.sessions : [];
+      setTermSessions(rows);
+      controlPlaneStore.bootstrapSessions(rows);
     } catch (e: any) {
       setTermSessionsError(e?.message ?? String(e));
     } finally {
@@ -1055,25 +1095,80 @@ export function App() {
     }
   }, [t]);
 
-  const handleViewSession = useCallback(async (sessionId: string) => {
+  const openArtifactInspector = useCallback(async (sessionId: string, kind: ArtifactInspectorKind = "replay") => {
+    const projectedSession = controlPlaneSnapshot.sessions.find((session) => session.sessionId === sessionId);
+    const rawSession = termSessions.find((session) => session.sessionId === sessionId);
     setReplayOpen(true);
-    setReplayTitle(t("终端回放 {id}", { id: sessionId }));
+    setArtifactKind(kind);
+    setReplayTitle(
+      kind === "snapshot"
+        ? t("实时快照 {id}", { id: sessionId })
+        : kind === "diff"
+          ? t("Diff 详情 {id}", { id: sessionId })
+          : t("终端回放 {id}", { id: sessionId }),
+    );
     setReplayText("");
     setReplayLoading(true);
+    setArtifactDiffBlocks([]);
+    setArtifactSourceLabel(kind === "snapshot" ? t("实时快照") : kind === "diff" ? t("终端回放中的 diff") : t("终端回放"));
+    setArtifactEmptyHint("");
+    setArtifactSessionId(sessionId);
+    setArtifactSessionMode(projectedSession?.mode ?? rawSession?.mode ?? "");
+    setArtifactSessionCwd(projectedSession?.cwd ?? rawSession?.cwd ?? "");
+    setArtifactSessionStatus(formatArtifactSessionStatus(projectedSession?.status, projectedSession?.active ?? rawSession?.active));
     try {
-      const res = await apiFetch(`/api/term/replay/${sessionId}?tailBytes=20000`);
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(body || `HTTP ${res.status}`);
+      const url =
+        kind === "snapshot"
+          ? `/api/term/snapshot/${sessionId}?tailBytes=20000`
+          : `/api/term/replay/${sessionId}?tailBytes=20000`;
+      const res = await apiFetch(url);
+      let cleanText = "";
+      if (kind === "snapshot") {
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(body || `HTTP ${res.status}`);
+        }
+        const payload = await res.json();
+        cleanText = stripAnsi(String(payload?.data ?? "")) || t("(空)");
+      } else {
+        if (!res.ok) {
+          const body = await res.text();
+          throw new Error(body || `HTTP ${res.status}`);
+        }
+        cleanText = stripAnsi(await res.text()) || t("(空)");
       }
-      const text = await res.text();
-      setReplayText(stripAnsi(text) || t("(空)"));
+      setReplayText(cleanText);
+      if (kind === "diff") {
+        const blocks = extractDiffBlocks(cleanText);
+        setArtifactDiffBlocks(blocks);
+        if (blocks.length === 0) {
+          setArtifactEmptyHint(t("当前输出中没有提取到标准 diff，已回退展示原始输出。"));
+        }
+      }
     } catch (e: any) {
       setReplayText(t("[错误] {msg}", { msg: e?.message ?? String(e) }));
+      setArtifactEmptyHint("");
     } finally {
       setReplayLoading(false);
     }
-  }, [t]);
+  }, [controlPlaneSnapshot.sessions, t, termSessions]);
+
+  const handleViewSession = useCallback(async (sessionId: string) => {
+    await openArtifactInspector(sessionId, "replay");
+  }, [openArtifactInspector]);
+
+  const handleAcknowledgeReminder = useCallback((sessionId: string) => {
+    controlPlaneStore.ackSession(sessionId);
+  }, []);
+
+  const handleAcknowledgeAllReminders = useCallback(() => {
+    const sessionIds = Array.from(
+      new Set(controlPlaneSnapshot.attention.map((item) => item.sessionId).filter((sessionId): sessionId is string => Boolean(sessionId))),
+    );
+    for (const sessionId of sessionIds) {
+      controlPlaneStore.ackSession(sessionId);
+    }
+  }, [controlPlaneSnapshot.attention]);
 
   const saveSessionForMode = useCallback((mode: TermMode, session: TermSessionRecord) => {
     if (mode === "cursor") return;
@@ -1115,21 +1210,58 @@ export function App() {
     clearSessionById(sessionId);
   }, [clearSessionById]);
 
-  const handleDeleteSession = useCallback(async (sessionId: string) => {
+  async function deleteSessionArtifacts(sessionId: string, options?: { allowCurrent?: boolean }) {
+    const allowCurrent = options?.allowCurrent ?? false;
     if (sessionId === termSessionIdRef.current) {
-      setStatus(t("[提示] 当前会话无法直接删除，请先切换或关闭终端"));
-      return;
+      if (!allowCurrent) {
+        throw new Error(t("当前会话无法直接删除"));
+      }
+      detachActiveSession(termModeRef.current);
     }
+    const res = await apiFetch(`/api/term/sessions/${sessionId}`, { method: "DELETE" });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || t("删除会话失败"));
+    setTermSessions((prev) => {
+      const next = prev.filter((s) => s.sessionId !== sessionId);
+      controlPlaneStore.bootstrapSessions(next);
+      return next;
+    });
+    clearSavedSession(sessionId);
+    controlPlaneStore.ackSession(sessionId);
+  }
+
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
     try {
-      const res = await apiFetch(`/api/term/sessions/${sessionId}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!data.ok) throw new Error(data.error || t("删除会话失败"));
-      setTermSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
-      clearSavedSession(sessionId);
+      await deleteSessionArtifacts(sessionId, { allowCurrent: true });
     } catch (e: any) {
       setStatus(t("[错误] 删除会话: {msg}", { msg: e?.message ?? String(e) }));
     }
-  }, [clearSavedSession, t]);
+  }, [deleteSessionArtifacts, t]);
+
+  const handleClearArtifactHistory = useCallback(async () => {
+    const sessionIds = Array.from(new Set(controlPlaneSnapshot.artifacts.map((item) => item.sessionId).filter(Boolean)));
+    if (!sessionIds.length) {
+      setStatus(t("[提示] 当前没有可清空的历史记录"));
+      return;
+    }
+    setClearingArtifacts(true);
+    let removed = 0;
+    let failed = 0;
+    for (const sessionId of sessionIds) {
+      try {
+        await deleteSessionArtifacts(sessionId, { allowCurrent: true });
+        removed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    setClearingArtifacts(false);
+    if (failed > 0) {
+      setStatus(t("[提示] 已清空 {removed} 条历史会话，另有 {failed} 条删除失败", { removed, failed }));
+      return;
+    }
+    setStatus(t("[成功] 已清空 {count} 条历史会话", { count: removed }));
+  }, [controlPlaneSnapshot.artifacts, deleteSessionArtifacts, t]);
 
   // PC 端三块区域折叠状态（仅桌面端生效）
   const [panelExplorerCollapsed, setPanelExplorerCollapsed] = useState(false);
@@ -1180,6 +1312,12 @@ export function App() {
   const fileListRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<string>("");
   const [terminalCwd, setTerminalCwd] = useState<string>("");
+  const [termSurfaceState, setTermSurfaceState] = useState<TermSurfaceState>({
+    lifecycle: "no-session",
+    capability: null,
+    detail: "",
+    exitCode: null,
+  });
 
   // Dark mode effect
   useEffect(() => {
@@ -1346,6 +1484,127 @@ export function App() {
     return { uiMode: "restricted" as TermMode, cliMode: fallbackCli, sessionMode: "restricted", isPty: false };
   }, []);
 
+  const getTermCapability = useCallback((uiMode: TermMode, isPty: boolean, hasSession: boolean): TermCapability | null => {
+    if (uiMode === "cursor") return null;
+    if (uiMode === "restricted") {
+      if (!hasSession) return "restricted-terminal";
+      return isPty ? "interactive-secure" : "secure-command";
+    }
+    return "interactive-cli";
+  }, []);
+
+  const getNoSessionDetail = useCallback(
+    () => (terminalCwd ? t("工作目录已就绪，点击“新建”开始。") : t("请先选择工作目录，然后创建会话。")),
+    [terminalCwd, t],
+  );
+
+  const getReadyDetail = useCallback(
+    (uiMode: TermMode, capability: TermCapability | null) => {
+      if (capability === "interactive-secure") return t("交互式安全终端已连接。");
+      if (capability === "secure-command") return t("安全命令已就绪，可连续输入命令。");
+      const toolLabel = t(getToolDef(modeToToolId(uiMode)).label);
+      return t("{tool} 已连接。", { tool: toolLabel });
+    },
+    [t],
+  );
+
+  const getCommandCompleteDetail = useCallback(
+    (code?: number | string | null) =>
+      code === undefined || code === null
+        ? t("命令已完成，可直接继续输入下一条。")
+        : t("命令已完成（退出码 {code}），可直接继续输入下一条。", { code }),
+    [t],
+  );
+
+  const getExitedDetail = useCallback(
+    (code?: number | string | null) =>
+      code === undefined || code === null
+        ? t("会话已退出，点击“新建”重新进入。")
+        : t("会话已退出（退出码 {code}），点击“新建”重新进入。", { code }),
+    [t],
+  );
+
+  const buildReadyTermSurface = useCallback(
+    (uiMode: TermMode, isPty: boolean): TermSurfaceState => {
+      const capability = getTermCapability(uiMode, isPty, true);
+      return {
+        lifecycle: "ready",
+        capability,
+        detail: getReadyDetail(uiMode, capability),
+        exitCode: null,
+      };
+    },
+    [getReadyDetail, getTermCapability],
+  );
+
+  const buildExitedTermSurface = useCallback(
+    (uiMode: TermMode, code?: number | string | null): TermSurfaceState => ({
+      lifecycle: "exited",
+      capability: getTermCapability(uiMode, false, false),
+      detail: getExitedDetail(code),
+      exitCode: code ?? null,
+    }),
+    [getExitedDetail, getTermCapability],
+  );
+
+  const markNoSession = useCallback(
+    (uiMode: TermMode, detail?: string) => {
+      if (uiMode === "cursor") return;
+      setTermSurfaceState({
+        lifecycle: "no-session",
+        capability: getTermCapability(uiMode, false, false),
+        detail: detail ?? getNoSessionDetail(),
+        exitCode: null,
+      });
+    },
+    [getNoSessionDetail, getTermCapability],
+  );
+
+  const markPendingAttach = useCallback(
+    (pending: { sessionId: string; cwd?: string; mode?: string; noFallback?: boolean }) => {
+      pendingAttachRef.current = pending;
+      const mapped = mapSessionMode(pending.mode);
+      setTermSurfaceState({
+        lifecycle: "restoring",
+        capability: getTermCapability(mapped.uiMode, mapped.isPty, true),
+        detail: t("正在恢复上次会话。"),
+        exitCode: null,
+      });
+    },
+    [getTermCapability, mapSessionMode, t],
+  );
+
+  const markPendingOpen = useCallback(
+    (uiMode: TermMode, cwd?: string) => {
+      pendingOpenRef.current = { mode: uiMode, cwd };
+      setTermSurfaceState({
+        lifecycle: "creating",
+        capability: getTermCapability(uiMode, false, false),
+        detail: t("正在创建新会话。"),
+        exitCode: null,
+      });
+    },
+    [getTermCapability, t],
+  );
+
+  const syncCurrentControlPlaneSession = useCallback((sessionId: string, meta?: { cwd?: string; mode?: string }) => {
+    if (sessionId) {
+      controlPlaneStore.setCurrentSession(sessionId, meta);
+      return;
+    }
+    controlPlaneStore.clearCurrentSession();
+  }, []);
+
+  const clearAttachedTermSession = useCallback(() => {
+    const prevSessionId = termSessionIdRef.current;
+    termSessionIdRef.current = "";
+    termSessionModeRef.current = "";
+    termSessionIsPtyRef.current = false;
+    termCwdRef.current = "";
+    cursorPromptNudgedRef.current = false;
+    controlPlaneStore.clearCurrentSession(prevSessionId);
+  }, []);
+
   const showNoSessionHint = useCallback((mode: TermMode) => {
     const term = termRef.current;
     if (!term || mode === "cursor") return;
@@ -1360,17 +1619,16 @@ export function App() {
       const sessionMode = termSessionModeRef.current || currentMode;
       saveSessionForMode(currentMode, { sessionId: sid, cwd: termCwdRef.current || terminalCwd, mode: sessionMode });
     }
-    termSessionIdRef.current = "";
-    termSessionModeRef.current = "";
-    termSessionIsPtyRef.current = false;
+    clearAttachedTermSession();
     termPendingStdinRef.current = "";
     termPendingDataBufferRef.current.clear();
     termRestoreLockActiveRef.current = false;
     termRestoreLockSessionRef.current = "";
     if (nextMode && nextMode !== "cursor") {
       showNoSessionHint(nextMode);
+      markNoSession(nextMode);
     }
-  }, [saveSessionForMode, showNoSessionHint, terminalCwd]);
+  }, [clearAttachedTermSession, markNoSession, saveSessionForMode, showNoSessionHint, terminalCwd]);
 
   const handleSelectTool = useCallback((id: ToolId) => {
     const nextMode = toolIdToMode(id);
@@ -1383,29 +1641,51 @@ export function App() {
     if (nextMode !== "cursor") {
       const saved = getSessionForMode(nextMode);
       if (saved?.sessionId) {
-        pendingAttachRef.current = { sessionId: saved.sessionId, cwd: saved.cwd, mode: saved.mode, noFallback: true };
+        markPendingAttach({ sessionId: saved.sessionId, cwd: saved.cwd, mode: saved.mode, noFallback: true });
         setRestoreNonce((n) => n + 1);
       } else {
         setStatus(t("[提示] 当前模式暂无会话，请点击“新建”"));
+        markNoSession(nextMode);
       }
       if (!isMobile) {
         termRef.current?.focus();
         setTimeout(() => termRef.current?.focus(), 50);
       }
     }
-  }, [detachActiveSession, getSessionForMode, isMobile]);
+  }, [detachActiveSession, getSessionForMode, isMobile, markNoSession, markPendingAttach, t]);
+
+  const openQuickSession = useCallback((uiMode: TermMode, cliMode?: "agent" | "plan" | "ask") => {
+    if (uiMode === "cursor") return;
+    const cwd = terminalCwd || activeRoot;
+    if (!cwd) {
+      setStatus(t("[提示] 请先选择工作目录"));
+      markNoSession(uiMode);
+      return;
+    }
+    pendingAttachRef.current = null;
+    if (uiMode === "cursor-cli" && cliMode) {
+      setCursorCliMode(cliMode);
+    }
+    if (uiMode === "restricted") {
+      setRestrictedNonce((n) => n + 1);
+    }
+    if (uiMode !== termModeRef.current) {
+      detachActiveSession(uiMode);
+      setTermMode(uiMode);
+    } else {
+      detachActiveSession();
+    }
+    markPendingOpen(uiMode, cwd);
+    setOpenNonce((n) => n + 1);
+    if (isMobile) {
+      setMobileTab("terminal");
+    }
+  }, [activeRoot, detachActiveSession, isMobile, markNoSession, markPendingOpen, t, terminalCwd]);
 
   const handleNewSession = useCallback(() => {
     if (termModeRef.current === "cursor") return;
-    if (!terminalCwd) {
-      setStatus(t("[提示] 请先选择工作目录"));
-      return;
-    }
-    detachActiveSession();
-    pendingAttachRef.current = null;
-    pendingOpenRef.current = { mode: termModeRef.current, cwd: terminalCwd };
-    setOpenNonce((n) => n + 1);
-  }, [detachActiveSession, terminalCwd]);
+    void openQuickSession(termModeRef.current, termModeRef.current === "cursor-cli" ? cursorCliModeRef.current : undefined);
+  }, [openQuickSession]);
 
   const recoverLatestActiveSession = useCallback(async (preferredMode?: TermMode) => {
     try {
@@ -1427,12 +1707,12 @@ export function App() {
         }) ?? activeRows[0];
       if (!target?.sessionId) return false;
 
-      pendingAttachRef.current = {
+      markPendingAttach({
         sessionId: target.sessionId,
         cwd: target.cwd,
         mode: target.mode,
         noFallback: true,
-      };
+      });
       const mapped = mapSessionMode(target.mode);
       if (mapped.uiMode !== termModeRef.current) setTermMode(mapped.uiMode);
       if (mapped.cliMode !== cursorCliModeRef.current) setCursorCliMode(mapped.cliMode);
@@ -1445,7 +1725,7 @@ export function App() {
     } catch {
       return false;
     }
-  }, [isMobile, mapSessionMode, terminalCwd]);
+  }, [isMobile, mapSessionMode, markPendingAttach, terminalCwd]);
 
   useEffect(() => {
     if (autoAttachPreparedRef.current) return;
@@ -1476,7 +1756,7 @@ export function App() {
         });
         return;
       }
-      pendingAttachRef.current = { sessionId: saved.sessionId, cwd: saved.cwd, mode: saved.mode, noFallback: true };
+      markPendingAttach({ sessionId: saved.sessionId, cwd: saved.cwd, mode: saved.mode, noFallback: true });
       const mapped = mapSessionMode(saved.mode);
       if (mapped.uiMode !== termModeRef.current) setTermMode(mapped.uiMode);
       if (mapped.cliMode !== cursorCliModeRef.current) setCursorCliMode(mapped.cliMode);
@@ -1490,15 +1770,21 @@ export function App() {
         autoAttachPreparedRef.current = true;
       });
     }
-  }, [isMobile, mapSessionMode, recoverLatestActiveSession, terminalCwd]);
+  }, [isMobile, mapSessionMode, markPendingAttach, recoverLatestActiveSession, terminalCwd]);
 
   const handleRestoreSession = useCallback((s: { sessionId: string; cwd?: string; mode?: string }) => {
     if (isLegacyRestrictedSessionMode(s.mode)) {
       setStatus(t("[提示] 会话已失效，请点击“新建”"));
       clearSavedSession(s.sessionId);
+      setTermSurfaceState({
+        lifecycle: "error",
+        capability: getTermCapability(termModeRef.current, false, false),
+        detail: t("保存的会话已失效，请重新创建。"),
+        exitCode: null,
+      });
       return;
     }
-    pendingAttachRef.current = { sessionId: s.sessionId, cwd: s.cwd, mode: s.mode, noFallback: true };
+    markPendingAttach({ sessionId: s.sessionId, cwd: s.cwd, mode: s.mode, noFallback: true });
     const mapped = mapSessionMode(s.mode);
     if (mapped.uiMode !== termModeRef.current) setTermMode(mapped.uiMode);
     if (mapped.cliMode !== cursorCliModeRef.current) setCursorCliMode(mapped.cliMode);
@@ -1507,7 +1793,52 @@ export function App() {
     if (isMobile) {
       setMobileTab("terminal");
     }
-  }, [isMobile, mapSessionMode]);
+  }, [getTermCapability, isMobile, mapSessionMode, markPendingAttach, t]);
+
+  const handleActivateControlPlaneSession = useCallback((sessionId: string) => {
+    const match = termSessions.find((item) => item.sessionId === sessionId);
+    if (match) {
+      handleRestoreSession(match);
+      return;
+    }
+    handleRestoreSession({ sessionId });
+  }, [handleRestoreSession, termSessions]);
+
+  const handleReminderAction = useCallback((item: ControlPlaneAttentionItem) => {
+    if (item.action === "view-replay" || item.action === "view-artifacts") {
+      void handleViewSession(item.sessionId);
+      return;
+    }
+    handleActivateControlPlaneSession(item.sessionId);
+  }, [handleActivateControlPlaneSession, handleViewSession]);
+
+  const handleOpenControlPlaneOverview = useCallback(() => {
+    if (isMobile) {
+      setMobileTab("windows");
+      return;
+    }
+    setLeftPanelTab("windows");
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (termMode === "cursor") return;
+    if (termSessionIdRef.current) return;
+    if (termSurfaceState.lifecycle === "restoring" || termSurfaceState.lifecycle === "creating") return;
+    setTermSurfaceState((prev) => {
+      if (prev.lifecycle === "exited" || prev.lifecycle === "error") return prev;
+      const nextCapability = getTermCapability(termMode, false, false);
+      const nextDetail = getNoSessionDetail();
+      if (prev.lifecycle === "no-session" && prev.capability === nextCapability && prev.detail === nextDetail) {
+        return prev;
+      }
+      return {
+        lifecycle: "no-session",
+        capability: nextCapability,
+        detail: nextDetail,
+        exitCode: null,
+      };
+    });
+  }, [getNoSessionDetail, getTermCapability, termMode, termSurfaceState.lifecycle]);
 
   const terminalVisible = !isMobile || mobileTab === "terminal";
   const enabledToolIds = useMemo(
@@ -1521,6 +1852,304 @@ export function App() {
   const askImageHintLabel = t("🖼️ 提问图片");
   const activeShortcutDoc = useMemo(() => TOOL_SHORTCUT_DOCS[termMode] ?? null, [termMode]);
   const mobileTermSelectionActive = isMobile && termMode !== "cursor" && Boolean(mobileTermSelection || mobileTermLongPressMenu);
+  const termLifecycleLabel =
+    termSurfaceState.lifecycle === "restoring"
+      ? t("恢复中")
+      : termSurfaceState.lifecycle === "creating"
+        ? t("创建中")
+        : termSurfaceState.lifecycle === "ready"
+          ? t("就绪")
+          : termSurfaceState.lifecycle === "command-complete"
+            ? t("命令完成")
+            : termSurfaceState.lifecycle === "exited"
+              ? t("已退出")
+              : termSurfaceState.lifecycle === "error"
+                ? t("错误")
+                : "";
+  const termCapabilityLabel =
+    termSurfaceState.capability === "interactive-secure"
+      ? t("交互式安全终端")
+      : termSurfaceState.capability === "secure-command"
+        ? t("安全命令")
+        : termSurfaceState.capability === "restricted-terminal"
+          ? t("安全受限命令行")
+          : termSurfaceState.capability === "interactive-cli"
+            ? ""
+            : "";
+  const termRecoveryTitle =
+    termSurfaceState.lifecycle === "no-session"
+      ? t(getToolDef(activeToolId).label)
+      : termLifecycleLabel || t(getToolDef(activeToolId).label);
+  const termRecoveryEyebrow = termSurfaceState.lifecycle === "no-session" ? "" : termLifecycleLabel;
+  const termLifecycleTone =
+    termSurfaceState.lifecycle === "error"
+      ? "danger"
+      : termSurfaceState.lifecycle === "exited"
+        ? "warning"
+        : termSurfaceState.lifecycle === "command-complete"
+          ? "success"
+          : termSurfaceState.lifecycle === "ready"
+            ? "accent"
+            : "neutral";
+  const termCapabilityTone =
+    termSurfaceState.capability === "interactive-secure" || termSurfaceState.capability === "secure-command"
+      ? "accent"
+      : "neutral";
+  const termContextPath = termSessionIdRef.current
+    ? termCwdRef.current || terminalCwd
+    : pendingAttachRef.current?.cwd || pendingOpenRef.current?.cwd || terminalCwd;
+  const showTermRecoveryCard =
+    termMode !== "cursor" &&
+    !termSessionIdRef.current &&
+    (termSurfaceState.lifecycle === "no-session" || termSurfaceState.lifecycle === "exited" || termSurfaceState.lifecycle === "error");
+  const termLiveText =
+    termMode === "cursor" || termSurfaceState.lifecycle === "no-session"
+      ? ""
+      : t("终端状态：{state}；能力：{capability}；{detail}", {
+          state: termLifecycleLabel,
+          capability: termCapabilityLabel || t("未提供"),
+          detail: termSurfaceState.detail || t("无"),
+        });
+  const activeToolGuide = useMemo(() => {
+    if (termMode === "cursor") {
+      return t("Cursor Chat：对话式助手，用来提问、规划和解释，不直接作为终端执行命令。");
+    }
+    if (termMode === "restricted") {
+      return t("安全终端：用于执行受限 shell 命令；适合 ls、git、pnpm 这类操作，不是 AI 聊天。");
+    }
+    if (termMode === "cursor-cli") {
+      return t("Cursor CLI：把你的输入直接发给 Cursor 命令行代理；当前子模式为 {mode}。", { mode: cursorCliMode });
+    }
+    const tool = t(getToolDef(modeToToolId(termMode)).label);
+    const desc = t(getToolDef(modeToToolId(termMode)).desc);
+    return t("{tool}：{desc}", { tool, desc });
+  }, [cursorCliMode, termMode, t]);
+  const reminderCount = controlPlaneSnapshot.attention.length;
+  const visibleReminders = controlPlaneSnapshot.attention.slice(0, 4);
+  const hiddenReminderCount = Math.max(0, reminderCount - visibleReminders.length);
+  const controlPlaneRelationshipHint = controlPlaneEnabled
+    ? t("上方切换的是工具（如 Qwen Code / Codex CLI / 安全终端）；提醒在终端顶部，历史在单独标签，不会改变当前 AI。")
+    : "";
+  const termReminderToggle = controlPlaneEnabled ? (
+    <button
+      type="button"
+      className={"termReminderToggle" + (termRemindersOpen ? " termReminderToggleActive" : "")}
+      onClick={() => setTermRemindersOpen((prev) => !prev)}
+      aria-expanded={termRemindersOpen}
+      aria-controls="term-reminder-bar"
+    >
+      <span>{t("提醒")}</span>
+      <span className="termReminderToggleCount">{reminderCount}</span>
+    </button>
+  ) : null;
+  const mobileTerminalFocusBar =
+    isMobile && controlPlaneEnabled ? (
+      <div className="mobileTerminalFocusBar">
+        <div className="mobileTerminalFocusActions">
+          <button
+            type="button"
+            className={"mobileTerminalFocusBtn" + (termRemindersOpen ? " mobileTerminalFocusBtnActive" : "")}
+            onClick={() => setTermRemindersOpen((prev) => !prev)}
+            aria-expanded={termRemindersOpen}
+            aria-controls="term-reminder-bar"
+          >
+            <span>{t("提醒")}</span>
+            <span className="mobileTerminalFocusCount">{controlPlaneSnapshot.attention.length}</span>
+          </button>
+          <button type="button" className="mobileTerminalFocusBtn" onClick={() => setMobileTab("artifacts")}>
+            <span>{t("历史")}</span>
+            <span className="mobileTerminalFocusCount">{controlPlaneSnapshot.artifacts.length}</span>
+          </button>
+        </div>
+      </div>
+    ) : null;
+  const termContextRow =
+    termMode !== "cursor" ? (
+      <div className={"termPanelContextRow" + (isMobile ? " termPanelContextRowCompact" : "")}>
+        <div className="termStatusMeta">
+          {!isMobile && activeToolGuide ? <div className="termStatusDetail">{activeToolGuide}</div> : null}
+          {!isMobile && controlPlaneRelationshipHint ? <div className="termStatusDetail">{controlPlaneRelationshipHint}</div> : null}
+          {!isMobile && termSurfaceState.detail ? <div className="termStatusDetail">{termSurfaceState.detail}</div> : null}
+        </div>
+        <div className="termPanelContextAside">
+          {!isMobile ? termReminderToggle : null}
+          {termContextPath ? (
+            <div className="termPanelHeaderCwd" title={termContextPath}>
+              {t("工作目录: {path}", { path: termContextPath })}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    ) : !isMobile ? (
+      <div className="termPanelContextRow">
+        <div className="termStatusMeta">
+          {activeToolGuide ? <div className="termStatusDetail">{activeToolGuide}</div> : null}
+          {controlPlaneRelationshipHint ? <div className="termStatusDetail">{controlPlaneRelationshipHint}</div> : null}
+        </div>
+        <div className="termPanelContextAside">
+          {termReminderToggle}
+          {termContextPath ? (
+            <div className="termPanelHeaderCwd" title={termContextPath}>
+              {t("工作目录: {path}", { path: termContextPath })}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    ) : null;
+  const termReminderBar =
+    controlPlaneEnabled && termRemindersOpen ? (
+      <div className="termReminderBar" id="term-reminder-bar">
+        <div className="termReminderHeader">
+          <div className="termReminderHeaderMeta">
+            <div className="termReminderTitle">提醒</div>
+            <div className="termReminderHint">
+              {reminderCount > 0 ? "这里只保留需要你看一眼的确认和异常。" : "当前没有提醒。"}
+            </div>
+          </div>
+          <div className="termReminderHeaderActions">
+            {hiddenReminderCount > 0 ? (
+              <button type="button" className="btn btnSm" onClick={handleOpenControlPlaneOverview}>
+                查看全部
+              </button>
+            ) : null}
+            {reminderCount > 0 ? (
+              <button type="button" className="btn btnSm" onClick={handleAcknowledgeAllReminders}>
+                全部已读
+              </button>
+            ) : null}
+          </div>
+        </div>
+        {visibleReminders.length ? (
+          <div className="termReminderList">
+            {visibleReminders.map((item) => (
+              <div className="termReminderItem" key={item.id}>
+                <div className="termReminderItemMain">
+                  <div className="termReminderItemTitleRow">
+                    <div className="termReminderItemTitle">{item.title}</div>
+                    <span className={`termStatusChip termStatusChip-${item.kind === "error" ? "danger" : "warning"}`}>
+                      {item.kind === "error" ? "异常" : "确认"}
+                    </span>
+                    <span className="controlPlaneInboxConfidence">{item.confidence === "high" ? "高置信" : item.confidence === "medium" ? "中置信" : "低置信"}</span>
+                  </div>
+                  <div className="termReminderItemMeta">
+                    <span>{item.sessionId}</span>
+                    <span>{formatTime(item.updatedAt)}</span>
+                  </div>
+                  <div className="termReminderItemDetail">{item.detail || "打开会话查看上下文。"}</div>
+                </div>
+                <div className="termReminderItemActions">
+                  <button type="button" className="btn btnSm" onClick={() => handleReminderAction(item)}>
+                    {item.action === "view-replay" || item.action === "view-artifacts" ? "查看回放" : "打开会话"}
+                  </button>
+                  <button type="button" className="btn btnSm" onClick={() => handleAcknowledgeReminder(item.sessionId)}>
+                    已读
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    ) : null;
+  const termRecoveryCard = showTermRecoveryCard ? (
+    <div className="termEmptyState" role="status" aria-live="polite">
+      <div className="termEmptyStateCard">
+        {termRecoveryEyebrow ? <div className="termEmptyStateEyebrow">{termRecoveryEyebrow}</div> : null}
+        <h3 className="termEmptyStateTitle">{termRecoveryTitle}</h3>
+        <p className="termEmptyStateBody">{termSurfaceState.detail || getNoSessionDetail()}</p>
+        <div className="termEmptyStateActions">
+          <button type="button" className="btn termEmptyStateBtn" disabled={!terminalCwd} onClick={handleNewSession}>
+            {t("新建会话")}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+  const controlPlaneCurrentSurface =
+    termMode === "cursor"
+      ? null
+      : {
+          lifecycle: termLifecycleLabel,
+          capability: termCapabilityLabel,
+          detail: termSurfaceState.detail || getNoSessionDetail(),
+        };
+  const controlPlaneOpenFiles = useMemo(
+    () =>
+      openTabs.map((path) => ({
+        path,
+        dirty: fileStateByPath[path]?.dirty,
+        current: path === activeFile,
+      })),
+    [activeFile, fileStateByPath, openTabs],
+  );
+  const controlPlaneQuickActions = useMemo(() => {
+    const actions: Array<{ id: string; label: string; description: string; onSelect: () => void }> = [];
+    const toolActionDefs = enabledToolIds.filter((id) => id !== "cursor").map((id) => {
+      if (id === "command") {
+        return {
+          id,
+          label: "新建安全会话",
+          description: terminalCwd || activeRoot ? `在 ${terminalCwd || activeRoot} 启动安全终端` : "先选择工作目录",
+          onSelect: () => openQuickSession("restricted"),
+        };
+      }
+      if (id === "cursor-cli") {
+        return {
+          id,
+          label: "新建 Cursor CLI",
+          description: `以 ${cursorCliMode} 模式启动 Cursor CLI`,
+          onSelect: () => openQuickSession("cursor-cli", cursorCliMode),
+        };
+      }
+      const uiMode = toolIdToMode(id);
+      return {
+        id,
+        label: `新建 ${t(getToolDef(id).label)} 会话`,
+        description: terminalCwd || activeRoot ? `在 ${terminalCwd || activeRoot} 启动` : "先选择工作目录",
+        onSelect: () => openQuickSession(uiMode),
+      };
+    });
+    actions.push(...toolActionDefs);
+    if (termSessionIdRef.current) {
+      actions.unshift({
+        id: "focus-current-session",
+        label: "聚焦当前会话",
+        description: termCwdRef.current || terminalCwd || "跳回当前 raw terminal",
+        onSelect: () => {
+          controlPlaneStore.ackSession(termSessionIdRef.current);
+          if (isMobile) setMobileTab("terminal");
+          termRef.current?.focus();
+        },
+      });
+      actions.push({
+        id: "replay-current-session",
+        label: "打开当前回放",
+        description: termSessionIdRef.current,
+        onSelect: () => void handleViewSession(termSessionIdRef.current),
+      });
+    }
+    for (const session of controlPlaneSnapshot.sessions.slice(0, 4)) {
+      actions.push({
+        id: `resume:${session.sessionId}`,
+        label: session.current ? "打开当前会话详情" : `接入 ${session.sessionId}`,
+        description: session.cwd || session.mode || session.detail || "进入会话",
+        onSelect: () => handleRestoreSession({ sessionId: session.sessionId, cwd: session.cwd, mode: session.mode }),
+      });
+    }
+    return actions;
+  }, [
+    activeRoot,
+    controlPlaneSnapshot.sessions,
+    cursorCliMode,
+    enabledToolIds,
+    handleRestoreSession,
+    handleViewSession,
+    isMobile,
+    openQuickSession,
+    t,
+    terminalCwd,
+  ]);
+  const artifactDiffSummary = useMemo(() => summarizeDiffBlocks(artifactDiffBlocks), [artifactDiffBlocks]);
   const handleSettingsTextareaEnter = useCallback(
     (
       e: React.KeyboardEvent<HTMLTextAreaElement>,
@@ -1549,6 +2178,58 @@ export function App() {
       });
     },
     [isMobile],
+  );
+
+  const promoteCompletedCommandToReady = useCallback(() => {
+    setTermSurfaceState((prev) => {
+      if (prev.lifecycle !== "command-complete") return prev;
+      return buildReadyTermSurface(termModeRef.current, termSessionIsPtyRef.current);
+    });
+  }, [buildReadyTermSurface]);
+
+  const sendTermPayload = useCallback(
+    (payload: string, options?: { echoErrorToTerminal?: boolean }) => {
+      if (!payload) return false;
+      const sid = termSessionIdRef.current;
+      const client = termClientRef.current;
+      if (!sid || !client) {
+        if (pendingOpenRef.current || pendingAttachRef.current) {
+          termPendingStdinRef.current += payload;
+          return true;
+        }
+        setStatus(t("[提示] 当前模式暂无会话，请点击“新建”"));
+        return false;
+      }
+      promoteCompletedCommandToReady();
+      void client.stdin(sid, payload).catch((e) => {
+        const msg = e?.message ?? String(e);
+        setStatus(t("[错误] 终端: {msg}", { msg }));
+        setTermSurfaceState({
+          lifecycle: "error",
+          capability: getTermCapability(termModeRef.current, termSessionIsPtyRef.current, true),
+          detail: msg,
+          exitCode: null,
+        });
+        if (!options?.echoErrorToTerminal) return;
+        const term = termRef.current;
+        if (!term) return;
+        if (
+          termModeRef.current === "codex" ||
+          termModeRef.current === "claude" ||
+          termModeRef.current === "opencode" ||
+          termModeRef.current === "gemini" ||
+          termModeRef.current === "kimi" ||
+          termModeRef.current === "qwen" ||
+          termModeRef.current === "cursor-cli"
+        ) {
+          term.write(`\r\n${t("[错误] {msg}", { msg })}\r\n`);
+        } else {
+          term.write(`\r\n${t("[错误] {msg}", { msg })}\r\n$ `);
+        }
+      });
+      return true;
+    },
+    [getTermCapability, promoteCompletedCommandToReady, t],
   );
   const commandDirty = useMemo(() => {
     if (!commandSettings) return false;
@@ -1591,10 +2272,19 @@ export function App() {
       void refreshTermSessions();
       return;
     }
-    if (isMobile && mobileTab === "windows") {
+    if (isMobile && (mobileTab === "windows" || mobileTab === "artifacts" || mobileTab === "terminal")) {
       void refreshTermSessions();
     }
   }, [isMobile, leftPanelTab, mobileTab, refreshTermSessions]);
+
+  useEffect(() => {
+    if (!controlPlaneEnabled) return;
+    void refreshTermSessions();
+    const timer = window.setInterval(() => {
+      void refreshTermSessions();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [controlPlaneEnabled, refreshTermSessions]);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -1651,6 +2341,7 @@ export function App() {
       topHeight,
       mobileKeysVisible,
       fontSize: uiFontSize,
+      controlPlaneEnabled,
     };
     if (uiStateSaveTimerRef.current) window.clearTimeout(uiStateSaveTimerRef.current);
     uiStateSaveTimerRef.current = window.setTimeout(() => {
@@ -1673,8 +2364,29 @@ export function App() {
     topHeight,
     mobileKeysVisible,
     uiFontSize,
+    controlPlaneEnabled,
     isMobile,
   ]);
+
+  useEffect(() => {
+    if (!controlPlaneEnabled && mobileTab === "artifacts") {
+      setMobileTab("windows");
+      return;
+    }
+  }, [controlPlaneEnabled, mobileTab]);
+
+  useEffect(() => {
+    if (!controlPlaneEnabled) {
+      setTermRemindersOpen(false);
+      prevAttentionCountRef.current = 0;
+      return;
+    }
+    const nextCount = controlPlaneSnapshot.attention.length;
+    if (nextCount > 0 && prevAttentionCountRef.current === 0) {
+      setTermRemindersOpen(true);
+    }
+    prevAttentionCountRef.current = nextCount;
+  }, [controlPlaneEnabled, controlPlaneSnapshot.attention.length]);
 
   const sendTermInput = useCallback((data: string) => {
     const term = termRef.current;
@@ -1682,27 +2394,23 @@ export function App() {
     const sid = termSessionIdRef.current;
     if (!term || !client) return;
     if (!sid) {
-      if (pendingOpenRef.current || pendingAttachRef.current) {
-        termPendingStdinRef.current += data;
-      } else {
-        setStatus(t("[提示] 当前模式暂无会话，请点击“新建”"));
-      }
+      void sendTermPayload(data, { echoErrorToTerminal: true });
       return;
     }
 
-      const isPty = termSessionIsPtyRef.current;
-      if (!isPty) {
-        const isEnter = data === "\r" || data === "\n" || data === "\r\n";
-        if (termModeRef.current === "restricted") {
-          if (data === "\t") {
-            // In restricted-exec mode, Tab completion is handled by server logic.
-            // Do not locally echo '\t' to avoid visual jump/misalignment.
-          } else if (data === "\u007f" || data === "\b") {
-            termInputBufRef.current = termInputBufRef.current.slice(0, -1);
-            term.write("\b \b");
-          } else if (isEnter) {
-            const line = termInputBufRef.current.trim();
-            termInputBufRef.current = "";
+    const isPty = termSessionIsPtyRef.current;
+    if (!isPty) {
+      const isEnter = data === "\r" || data === "\n" || data === "\r\n";
+      if (termModeRef.current === "restricted") {
+        if (data === "\t") {
+          // In restricted-exec mode, Tab completion is handled by server logic.
+          // Do not locally echo '\t' to avoid visual jump/misalignment.
+        } else if (data === "\u007f" || data === "\b") {
+          termInputBufRef.current = termInputBufRef.current.slice(0, -1);
+          term.write("\b \b");
+        } else if (isEnter) {
+          const line = termInputBufRef.current.trim();
+          termInputBufRef.current = "";
           term.write("\r\n");
           if (line === "codex") {
             term.write(`${t("[启动 codex…]")}\r\n`);
@@ -1714,33 +2422,20 @@ export function App() {
           term.write(data);
         }
       } else {
-        if (data === "\u007f" || data === "\b") term.write("\b \b");
-        else term.write(data);
+        termInputBufRef.current += data;
+        term.write(data);
       }
+    } else {
+      if (data === "\u007f" || data === "\b") term.write("\b \b");
+      else term.write(data);
     }
 
-    void client.stdin(sid, data).catch((e) => {
-      if (termModeRef.current === "codex" || termModeRef.current === "claude" || termModeRef.current === "opencode" || termModeRef.current === "gemini" || termModeRef.current === "kimi" || termModeRef.current === "qwen" || termModeRef.current === "cursor-cli") {
-        term.write(`\r\n${t("[错误] {msg}", { msg: e?.message ?? String(e) })}\r\n`);
-      } else {
-        term.write(`\r\n${t("[错误] {msg}", { msg: e?.message ?? String(e) })}\r\n$ `);
-      }
-    });
-  }, [t]);
+    void sendTermPayload(data, { echoErrorToTerminal: true });
+  }, [sendTermPayload, t]);
 
   const sendTermRawInput = useCallback((payload: string) => {
-    const sid = termSessionIdRef.current;
-    const client = termClientRef.current;
-    if (!sid || !client) {
-      setStatus(t("[提示] 当前模式暂无会话，请点击“新建”"));
-      return false;
-    }
-    if (!payload) return false;
-    void client.stdin(sid, payload).catch((e) => {
-      setStatus(t("[错误] 终端: {msg}", { msg: e?.message ?? String(e) }));
-    });
-    return true;
-  }, [t]);
+    return sendTermPayload(payload, { echoErrorToTerminal: true });
+  }, [sendTermPayload]);
 
   const writeClipboardText = useCallback(async (text: string) => {
     if (!text) return false;
@@ -3347,12 +4042,13 @@ export function App() {
       const openCwd = terminalCwd || activeRoot;
       if (!openCwd) {
         setStatus(t("[提示] 请先选择工作目录"));
+        markNoSession(termModeRef.current);
         return;
       }
-      pendingOpenRef.current = { mode: termModeRef.current, cwd: openCwd };
+      markPendingOpen(termModeRef.current, openCwd);
       setOpenNonce((n) => n + 1);
     },
-    [activeRoot, sendTermInput, t, terminalCwd],
+    [activeRoot, markNoSession, markPendingOpen, sendTermInput, t, terminalCwd],
   );
 
   const handleImageUploadChange = useCallback(
@@ -3600,6 +4296,12 @@ export function App() {
     const client = new TermClient();
     termClientRef.current = client;
     client.debug = true;
+    client.onConnectionChange = (connected) => {
+      controlPlaneStore.setConnection(connected);
+      if (connected) {
+        void refreshTermSessions();
+      }
+    };
     logTerm("terminal init", { terminalVisible, w: el.clientWidth, h: el.clientHeight });
 
     // Ensure TUIs can query device/cursor status.
@@ -3677,6 +4379,7 @@ export function App() {
     } catch {}
 
     client.onMsg = (m: TermServerMsg) => {
+      controlPlaneStore.applyServerMessage(m);
       if (m.t === "term.data") {
         const sid = m.sessionId;
         if (sid === termSessionIdRef.current) {
@@ -3718,6 +4421,7 @@ export function App() {
       }
       if (m.t === "term.exit" && m.sessionId === termSessionIdRef.current) {
         const sessionMode = termSessionModeRef.current;
+        const wasRestrictedPty = sessionMode === "restricted" && termSessionIsPtyRef.current;
         syncTermFollowFromViewport();
         if (termRestoreLockSessionRef.current === m.sessionId) {
           termRestoreLockActiveRef.current = false;
@@ -3727,63 +4431,48 @@ export function App() {
         // For PTY-based modes (codex, cursor, cursor-cli), term.exit means the whole session ended.
         // For restricted mode, term.exit only means a single command finished — keep the session open.
         if (sessionMode === "codex") {
-          termSessionIdRef.current = "";
-          termSessionModeRef.current = "";
-          termSessionIsPtyRef.current = false;
-          cursorPromptNudgedRef.current = false;
+          clearAttachedTermSession();
           clearSavedSession(m.sessionId);
+          setTermSurfaceState(buildExitedTermSurface("codex", m.code));
           term.write(`\r\n${t("[codex 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
         } else if (sessionMode === "claude") {
-          termSessionIdRef.current = "";
-          termSessionModeRef.current = "";
-          termSessionIsPtyRef.current = false;
-          cursorPromptNudgedRef.current = false;
+          clearAttachedTermSession();
           clearSavedSession(m.sessionId);
+          setTermSurfaceState(buildExitedTermSurface("claude", m.code));
           term.write(`\r\n${t("[claude 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
         } else if (sessionMode === "opencode") {
-          termSessionIdRef.current = "";
-          termSessionModeRef.current = "";
-          termSessionIsPtyRef.current = false;
-          cursorPromptNudgedRef.current = false;
+          clearAttachedTermSession();
           clearSavedSession(m.sessionId);
+          setTermSurfaceState(buildExitedTermSurface("opencode", m.code));
           term.write(`\r\n${t("[opencode 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
         } else if (sessionMode === "gemini") {
-          termSessionIdRef.current = "";
-          termSessionModeRef.current = "";
-          termSessionIsPtyRef.current = false;
-          cursorPromptNudgedRef.current = false;
+          clearAttachedTermSession();
           clearSavedSession(m.sessionId);
+          setTermSurfaceState(buildExitedTermSurface("gemini", m.code));
           term.write(`\r\n${t("[gemini 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
         } else if (sessionMode === "kimi") {
-          termSessionIdRef.current = "";
-          termSessionModeRef.current = "";
-          termSessionIsPtyRef.current = false;
-          cursorPromptNudgedRef.current = false;
+          clearAttachedTermSession();
           clearSavedSession(m.sessionId);
+          setTermSurfaceState(buildExitedTermSurface("kimi", m.code));
           term.write(`\r\n${t("[kimi 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
         } else if (sessionMode === "qwen") {
-          termSessionIdRef.current = "";
-          termSessionModeRef.current = "";
-          termSessionIsPtyRef.current = false;
-          cursorPromptNudgedRef.current = false;
+          clearAttachedTermSession();
           clearSavedSession(m.sessionId);
+          setTermSurfaceState(buildExitedTermSurface("qwen", m.code));
           term.write(`\r\n${t("[qwen 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
         } else if (
           sessionMode === "cursor-cli-agent" ||
           sessionMode === "cursor-cli-plan" ||
           sessionMode === "cursor-cli-ask"
         ) {
-          termSessionIdRef.current = "";
-          termSessionModeRef.current = "";
-          termSessionIsPtyRef.current = false;
-          cursorPromptNudgedRef.current = false;
+          clearAttachedTermSession();
           clearSavedSession(m.sessionId);
+          setTermSurfaceState(buildExitedTermSurface("cursor-cli", m.code));
           term.write(`\r\n${t("[cursor-cli 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
-        } else if (sessionMode === "restricted" && termSessionIsPtyRef.current) {
-          termSessionIdRef.current = "";
-          termSessionModeRef.current = "";
-          termSessionIsPtyRef.current = false;
+        } else if (wasRestrictedPty) {
+          clearAttachedTermSession();
           clearSavedSession(m.sessionId);
+          setTermSurfaceState(buildExitedTermSurface("restricted", m.code));
           term.write(`\r\n${t("[restricted PTY 已退出 {code}]", { code: m.code ?? "?" })}\r\n`);
         } else {
           // restricted mode: command finished, but session stays open for more commands
@@ -3791,6 +4480,12 @@ export function App() {
           try {
             term.write("\x1b[?25h");
           } catch {}
+          setTermSurfaceState({
+            lifecycle: "command-complete",
+            capability: getTermCapability("restricted", false, true),
+            detail: getCommandCompleteDetail(m.code),
+            exitCode: m.code ?? null,
+          });
           term.write(`$ `);
         }
         queueTermScrollToBottom();
@@ -3828,7 +4523,7 @@ export function App() {
       // Intentionally do NOT dispose on tab switches; only mark disposed for connect() continuation.
       disposed = true;
     };
-  }, [isMobile, queueTermScrollToBottom, safeFitTerm, syncTermFollowFromViewport, terminalVisible, termMode, sendTermInput, t]);
+  }, [isMobile, queueTermScrollToBottom, refreshTermSessions, safeFitTerm, syncTermFollowFromViewport, terminalVisible, termMode, sendTermInput, t]);
 
   useEffect(() => {
     if (!terminalVisible) return;
@@ -3934,13 +4629,12 @@ export function App() {
       termRef.current = null;
       fitRef.current = null;
       termClientRef.current = null;
-      termSessionIdRef.current = "";
+      clearAttachedTermSession();
       termInitedRef.current = false;
-      termSessionIsPtyRef.current = false;
       termRestoreLockActiveRef.current = false;
       termRestoreLockSessionRef.current = "";
     };
-  }, []);
+  }, [clearAttachedTermSession]);
 
   // (Re)open terminal session on explicit attach/new requests.
   useEffect(() => {
@@ -3969,6 +4663,12 @@ export function App() {
           pendingAttachRef.current = null;
           if (!isNotFound) {
             setStatus(t("[错误] 会话恢复失败: {msg}", { msg: errMsg }));
+            setTermSurfaceState({
+              lifecycle: "error",
+              capability: getTermCapability(termModeRef.current, false, false),
+              detail: errMsg,
+              exitCode: null,
+            });
           }
           return { ok: false, noFallback: Boolean(pending.noFallback), error: errMsg, notFound: isNotFound };
         }
@@ -3982,6 +4682,7 @@ export function App() {
         termFollowOutputRef.current = true;
         lastOpenKeyRef.current = buildOpenKey(sessionCwd, mapped.uiMode, mapped.cliMode);
         termCwdRef.current = sessionCwd;
+        syncCurrentControlPlaneSession(resp.sessionId, { cwd: sessionCwd, mode: sessionMode || mapped.sessionMode });
 
         if (sessionCwd && sessionCwd !== terminalCwd) setTerminalCwd(sessionCwd);
         if (mapped.uiMode !== termModeRef.current) setTermMode(mapped.uiMode);
@@ -4037,6 +4738,7 @@ export function App() {
           fitAndResize();
           queueTermScrollToBottom();
         }, 200);
+        setTermSurfaceState(buildReadyTermSurface(mapped.uiMode, mapped.isPty));
         setStatus(t("[已恢复] {msg}", { msg: sessionCwd || resp.sessionId }));
         return { ok: true };
       } catch (e: any) {
@@ -4046,6 +4748,12 @@ export function App() {
         pendingAttachRef.current = null;
         if (!isNotFound) {
           setStatus(t("[错误] 会话恢复失败: {msg}", { msg: errMsg }));
+          setTermSurfaceState({
+            lifecycle: "error",
+            capability: getTermCapability(termModeRef.current, false, false),
+            detail: errMsg,
+            exitCode: null,
+          });
         }
         return { ok: false, noFallback: Boolean(pending.noFallback), error: errMsg, notFound: isNotFound };
       }
@@ -4060,6 +4768,7 @@ export function App() {
         if (termModeRef.current !== "cursor") {
           showNoSessionHint(termModeRef.current);
           setStatus(t("[提示] 会话已失效，请点击“新建”"));
+          markNoSession(termModeRef.current, t("保存的会话已失效，请重新创建。"));
         }
         return;
       }
@@ -4077,13 +4786,21 @@ export function App() {
           setStatus(t("[提示] 请先选择工作目录"));
           return;
         }
-        logTerm("open session begin", { terminalCwd: openCwd, termMode: uiMode, cursorMode, cursorCliMode });
+        const openSize = resolveSafeTerminalOpenSize(term.cols, term.rows);
+        logTerm("open session begin", {
+          terminalCwd: openCwd,
+          termMode: uiMode,
+          cursorMode,
+          cursorCliMode,
+          termCols: term.cols,
+          termRows: term.rows,
+          openCols: openSize.cols,
+          openRows: openSize.rows,
+        });
 
         // Detach current session from UI but keep it running in background.
         if (termSessionIdRef.current) {
-          termSessionIdRef.current = "";
-          termSessionModeRef.current = "";
-          termSessionIsPtyRef.current = false;
+          clearAttachedTermSession();
           termRestoreLockActiveRef.current = false;
           termRestoreLockSessionRef.current = "";
           lastOpenKeyRef.current = "";
@@ -4123,13 +4840,14 @@ export function App() {
           queueTermScrollToBottom();
         }
 
-        const resp = await client.open(openCwd, term.cols, term.rows, actualMode);
+        const resp = await client.open(openCwd, openSize.cols, openSize.rows, actualMode);
         if (!resp.ok || !resp.sessionId) throw new Error(resp.error ?? t("终端会话打开失败"));
         const mappedOpenMode = mapSessionMode(resp.mode ?? actualMode);
         termSessionIdRef.current = resp.sessionId;
         termSessionModeRef.current = mappedOpenMode.sessionMode;
         termCwdRef.current = resp.cwd || openCwd;
         termSessionIsPtyRef.current = mappedOpenMode.isPty;
+        syncCurrentControlPlaneSession(resp.sessionId, { cwd: resp.cwd || openCwd, mode: resp.mode ?? actualMode });
         lastOpenKeyRef.current = buildOpenKey(openCwd, termModeRef.current, cursorCliModeRef.current);
         cursorPromptNudgedRef.current = false;
         if (uiMode === "restricted") {
@@ -4181,16 +4899,23 @@ export function App() {
           await client.stdin(resp.sessionId, pending).catch(() => {});
         }
 
-        if (!isPtySession && uiMode !== "codex" && uiMode !== "claude" && uiMode !== "opencode" && uiMode !== "gemini" && uiMode !== "kimi" && uiMode !== "qwen" && uiMode !== "cursor-cli") {
+        setTermSurfaceState(buildReadyTermSurface(mappedOpenMode.uiMode, mappedOpenMode.isPty));
+        if (!mappedOpenMode.isPty && uiMode !== "codex" && uiMode !== "claude" && uiMode !== "opencode" && uiMode !== "gemini" && uiMode !== "kimi" && uiMode !== "qwen" && uiMode !== "cursor-cli") {
           term.write("$ ");
         }
         queueTermScrollToBottom();
       } catch (e: any) {
         lastOpenKeyRef.current = "";
-          setStatus(t("[错误] 终端: {msg}", { msg: e?.message ?? String(e) }));
+        setStatus(t("[错误] 终端: {msg}", { msg: e?.message ?? String(e) }));
+        setTermSurfaceState({
+          lifecycle: "error",
+          capability: getTermCapability(termModeRef.current, false, false),
+          detail: e?.message ?? String(e),
+          exitCode: null,
+        });
       }
     })();
-  }, [terminalCwd, terminalVisible, termMode, cursorMode, cursorCliMode, restoreNonce, openNonce, buildOpenKey, mapSessionMode, ensureTermAttached, saveSessionForMode, fitAndResize, recoverLatestActiveSession, isMobile, queueTermScrollToBottom, showNoSessionHint, t]);
+  }, [terminalCwd, terminalVisible, termMode, cursorMode, cursorCliMode, restoreNonce, openNonce, buildExitedTermSurface, buildOpenKey, buildReadyTermSurface, clearAttachedTermSession, mapSessionMode, ensureTermAttached, saveSessionForMode, fitAndResize, recoverLatestActiveSession, getCommandCompleteDetail, getTermCapability, isMobile, markNoSession, queueTermScrollToBottom, showNoSessionHint, t]);
 
   const settingsTools = toolSettings.filter((t): t is UiToolSetting & { id: ToolId } => isToolId(t.id));
   const aiTools = settingsTools.filter((t) => t.id !== "command");
@@ -4325,6 +5050,18 @@ export function App() {
               </button>
             </div>
           </div>
+          <div className="settingsField">
+            <span className="settingsFieldLabel">{t("控制平面视图")}</span>
+            <label className="settingsItem" style={{ padding: 0 }}>
+              <input
+                type="checkbox"
+                checked={controlPlaneEnabled}
+                onChange={(e) => setControlPlaneEnabled(e.target.checked)}
+              />
+              <span className="settingsItemLabel">{t("启用 Session Cards / Inbox / Artifacts")}</span>
+              <span className="settingsItemDesc">{t("关闭后恢复旧的窗口列表视图")}</span>
+            </label>
+          </div>
         </div>
       </SettingsSection>
 
@@ -4425,7 +5162,7 @@ export function App() {
     </div>
   );
 
-  const WindowsPanel = (
+  const LegacyWindowsPanel = (
     <div className="windowsPanel">
       <div className="windowsHeader">
         <div className="windowsTitle">{t("窗口列表")}</div>
@@ -4518,6 +5255,53 @@ export function App() {
       </div>
     </div>
   );
+
+  const ControlPlaneOverviewPanel = (
+    <ControlPlanePanel
+      mode="overview"
+      isMobile={isMobile}
+      connected={controlPlaneSnapshot.connected}
+      stale={controlPlaneSnapshot.stale}
+      sessions={controlPlaneSnapshot.sessions}
+      attention={controlPlaneSnapshot.attention}
+      artifacts={controlPlaneSnapshot.artifacts}
+      quickActions={controlPlaneQuickActions}
+      currentSurface={controlPlaneCurrentSurface}
+      openFiles={controlPlaneOpenFiles}
+      onActivateSession={handleActivateControlPlaneSession}
+      onViewReplay={(sessionId) => void handleViewSession(sessionId)}
+      onViewArtifact={(sessionId, kind) => void openArtifactInspector(sessionId, kind)}
+      onCloseSession={(sessionId) => void handleDeleteSession(sessionId)}
+      onAcknowledgeSession={handleAcknowledgeReminder}
+      onClearArtifacts={() => void handleClearArtifactHistory()}
+      clearingArtifacts={clearingArtifacts}
+      onActivateFile={(path) => activateTab(path)}
+      onCloseFile={(path) => closeTab(path)}
+    />
+  );
+
+  const ArtifactsPanel = (
+    <ControlPlanePanel
+      mode="artifacts"
+      isMobile={isMobile}
+      connected={controlPlaneSnapshot.connected}
+      stale={controlPlaneSnapshot.stale}
+      sessions={controlPlaneSnapshot.sessions}
+      attention={controlPlaneSnapshot.attention}
+      artifacts={controlPlaneSnapshot.artifacts}
+      quickActions={controlPlaneQuickActions}
+      currentSurface={controlPlaneCurrentSurface}
+      onActivateSession={handleActivateControlPlaneSession}
+      onViewReplay={(sessionId) => void handleViewSession(sessionId)}
+      onViewArtifact={(sessionId, kind) => void openArtifactInspector(sessionId, kind)}
+      onCloseSession={(sessionId) => void handleDeleteSession(sessionId)}
+      onBackToTerminal={() => setMobileTab("terminal")}
+      onClearArtifacts={() => void handleClearArtifactHistory()}
+      clearingArtifacts={clearingArtifacts}
+    />
+  );
+
+  const WindowsPanel = controlPlaneEnabled ? ControlPlaneOverviewPanel : LegacyWindowsPanel;
 
   const renderExplorerTree = () => {
     if (!tree) {
@@ -4786,6 +5570,9 @@ export function App() {
   );
 
   const explorerPanelTab: "files" | "settings" | "windows" = isMobile ? "files" : leftPanelTab;
+  const showMobileControlPlanePanel = controlPlaneEnabled && mobileTab === "windows";
+  const showMobileArtifactsPanel = controlPlaneEnabled && mobileTab === "artifacts";
+  const showMobileLegacyWindowsPanel = !controlPlaneEnabled && mobileTab === "windows";
 
   const ExplorerPanel = (
     <div className={"panel" + (isMobile && mobileTab !== "explorer" ? " hidden" : "")} style={{ flex: isMobile ? 1 : undefined }}>
@@ -4812,7 +5599,7 @@ export function App() {
                 className={"leftToggleBtn" + (explorerPanelTab === "windows" ? " leftToggleBtnActive" : "")}
                 onClick={() => setLeftPanelTab("windows")}
               >
-                {t("窗口")}
+                {controlPlaneEnabled ? t("控制台") : t("窗口")}
               </button>
             </>
           ) : null}
@@ -4954,7 +5741,7 @@ export function App() {
                     className={"leftToggleBtn" + (leftPanelTab === "windows" ? " leftToggleBtnActive" : "")}
                     onClick={() => setLeftPanelTab("windows")}
                   >
-                    {t("窗口")}
+                    {controlPlaneEnabled ? t("控制台") : t("窗口")}
                   </button>
                 </div>
                 {leftPanelTab === "files" ? (
@@ -5136,66 +5923,67 @@ export function App() {
                 <span className="collapsedLabel">{t("终端")}</span>
               ) : null}
               {!terminalCollapsed ? (
-                <div className="termPanelHeaderRow">
-                <div className="segmented termModeSegmented" aria-label={t("终端模式")}>
-                  {enabledToolIds.map((id) => {
-                    const def = getToolDef(id);
-                    const isActive = activeToolId === id;
-                    return (
-                      <button
-                        key={id}
-                        className={"segBtn" + (isActive ? " segBtnActive" : "")}
-                        onClick={() => handleSelectTool(id)}
-                        title={t(def.desc)}
-                      >
-                        {t(def.label)}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="row termHeaderActions" style={{ marginLeft: "auto" }}>
-                  {termMode !== "cursor" && (
-                    <>
-                      <button
-                        type="button"
-                        className="termNewBtn"
-                        title={t("新建会话")}
-                        disabled={!terminalCwd}
-                        onClick={handleNewSession}
-                      >
-                        {t("新建")}
-                      </button>
-                      <button
-                        type="button"
-                        className="termPasteBtn"
-                        title={t("粘贴到终端")}
-                        onClick={() => {
-                          const sid = termSessionIdRef.current;
-                          const client = termClientRef.current;
-                          if (!sid || !client) return;
-                          setPasteModalText("");
-                          setPasteModalOpen(true);
-                          setTimeout(() => pasteModalTextareaRef.current?.focus(), 80);
-                        }}
-                      >
-                        {t("粘贴命令")}
-                      </button>
-                      <button
-                        type="button"
-                        className="termPasteBtn"
-                        title={t("键位表")}
-                        onClick={() => setShortcutModalOpen(true)}
-                      >
-                        {t("键位表")}
-                      </button>
-                    </>
-                    )}
+                <>
+                  <div className="termPanelHeaderRow">
+                    <div className="segmented termModeSegmented" aria-label={t("终端模式")}>
+                      {enabledToolIds.map((id) => {
+                        const def = getToolDef(id);
+                        const isActive = activeToolId === id;
+                        return (
+                          <button
+                            key={id}
+                            className={"segBtn" + (isActive ? " segBtnActive" : "")}
+                            onClick={() => handleSelectTool(id)}
+                            title={t(def.desc)}
+                          >
+                            {t(def.label)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="row termHeaderActions" style={{ marginLeft: "auto" }}>
+                      {termMode !== "cursor" && (
+                        <>
+                          <button
+                            type="button"
+                            className="termNewBtn"
+                            title={t("新建会话")}
+                            disabled={!terminalCwd}
+                            onClick={handleNewSession}
+                          >
+                            {t("新建")}
+                          </button>
+                          <button
+                            type="button"
+                            className="termPasteBtn"
+                            title={t("粘贴到终端")}
+                            onClick={() => {
+                              const sid = termSessionIdRef.current;
+                              const client = termClientRef.current;
+                              if (!sid || !client) return;
+                              setPasteModalText("");
+                              setPasteModalOpen(true);
+                              setTimeout(() => pasteModalTextareaRef.current?.focus(), 80);
+                            }}
+                          >
+                            {t("粘贴命令")}
+                          </button>
+                          <button
+                            type="button"
+                            className="termPasteBtn"
+                            title={t("键位表")}
+                            onClick={() => setShortcutModalOpen(true)}
+                          >
+                            {t("键位表")}
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
+                  {termContextRow}
+                  {termReminderBar}
+                </>
               ) : null}
-              <div className="termPanelHeaderCwd" title={terminalCwd}>
-                {terminalCwd ? t("工作目录: {path}", { path: terminalCwd }) : ""}
-              </div>
             </div>
             <div
               className={
@@ -5216,6 +6004,7 @@ export function App() {
                 position: "relative",
               }}
             >
+              {termRecoveryCard}
               <div
                 className={
                   "termChatWrap termPane " +
@@ -5511,15 +6300,26 @@ export function App() {
             <span className="mobileTopbarProjectName" title={terminalCwd || activeRoot}>
               {terminalCwd ? baseName(terminalCwd) : activeRoot ? baseName(activeRoot) : ""}
             </span>
-            <button
-              type="button"
-              className="themeToggleBtn"
-              onClick={toggleDarkMode}
-              title={isDarkMode ? t("切换到浅色模式") : t("切换到深色模式")}
-              aria-label={isDarkMode ? t("切换到浅色模式") : t("切换到深色模式")}
-            >
-              {isDarkMode ? "☀️" : "🌙"}
-            </button>
+            <div className="mobileTopbarActions">
+              <button
+                type="button"
+                className={"mobileHeaderTagBtn" + (mobileTab === "settings" ? " mobileHeaderTagBtnActive" : "")}
+                onClick={() => setMobileTab("settings")}
+                title={t("设置")}
+                aria-label={t("设置")}
+              >
+                {t("设置")}
+              </button>
+              <button
+                type="button"
+                className="themeToggleBtn"
+                onClick={toggleDarkMode}
+                title={isDarkMode ? t("切换到浅色模式") : t("切换到深色模式")}
+                aria-label={isDarkMode ? t("切换到浅色模式") : t("切换到深色模式")}
+              >
+                {isDarkMode ? "☀️" : "🌙"}
+              </button>
+            </div>
             <div className="tabs">
               <button className={"tabBtn" + (mobileTab === "explorer" ? " tabBtnActive" : "")} onClick={() => setMobileTab("explorer")}>
                 {t("文件夹")}
@@ -5530,12 +6330,20 @@ export function App() {
               <button className={"tabBtn" + (mobileTab === "terminal" ? " tabBtnActive" : "")} onClick={() => setMobileTab("terminal")}>
                 {t("终端")}
               </button>
-              <button className={"tabBtn" + (mobileTab === "windows" ? " tabBtnActive" : "")} onClick={() => setMobileTab("windows")}>
-                {t("窗口列表")}
-              </button>
-              <button className={"tabBtn" + (mobileTab === "settings" ? " tabBtnActive" : "")} onClick={() => setMobileTab("settings")}>
-                {t("设置")}
-              </button>
+              {controlPlaneEnabled ? (
+                <>
+                  <button className={"tabBtn" + (showMobileControlPlanePanel ? " tabBtnActive" : "")} onClick={() => setMobileTab("windows")}>
+                    {t("控制台")}
+                  </button>
+                  <button className={"tabBtn" + (showMobileArtifactsPanel ? " tabBtnActive" : "")} onClick={() => setMobileTab("artifacts")}>
+                    {t("历史")}
+                  </button>
+                </>
+              ) : (
+                <button className={"tabBtn" + (mobileTab === "windows" ? " tabBtnActive" : "")} onClick={() => setMobileTab("windows")}>
+                  {t("窗口列表")}
+                </button>
+              )}
             </div>
           </div>
 
@@ -5548,14 +6356,35 @@ export function App() {
               {SettingsPanel}
             </div>
           </div>
-          <div className={"panel" + (isMobile && mobileTab !== "windows" ? " hidden" : "")} style={{ flex: 1, minHeight: "65dvh" }}>
-            <div className="panelHeader">
-              <h2>{t("窗口列表")}</h2>
+          {controlPlaneEnabled ? (
+            <>
+              <div className={"panel" + (!showMobileControlPlanePanel ? " hidden" : "")} style={{ flex: 1, minHeight: "65dvh" }}>
+                <div className="panelHeader">
+                  <h2>{t("控制台")}</h2>
+                </div>
+                <div className="panelBody">
+                  {WindowsPanel}
+                </div>
+              </div>
+              <div className={"panel" + (!showMobileArtifactsPanel ? " hidden" : "")} style={{ flex: 1, minHeight: "65dvh" }}>
+                <div className="panelHeader">
+                  <h2>{t("历史记录")}</h2>
+                </div>
+                <div className="panelBody">
+                  {ArtifactsPanel}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className={"panel" + (!showMobileLegacyWindowsPanel ? " hidden" : "")} style={{ flex: 1, minHeight: "65dvh" }}>
+              <div className="panelHeader">
+                <h2>{t("窗口列表")}</h2>
+              </div>
+              <div className="panelBody">
+                {WindowsPanel}
+              </div>
             </div>
-            <div className="panelBody">
-              {WindowsPanel}
-            </div>
-          </div>
+          )}
           {/* Mobile editor panel (same structure as desktop, isMobile makes collapse btn hidden) */}
           <div
             className={"panel" + (isMobile && mobileTab !== "editor" ? " hidden" : "")}
@@ -5662,7 +6491,7 @@ export function App() {
           {/* Mobile terminal panel */}
           <div
             className={"panel" + (isMobile && mobileTab !== "terminal" ? " hidden" : "")}
-            style={{ flex: 1, minHeight: "65dvh" }}
+            style={{ flex: 1, minHeight: "72dvh" }}
           >
             <div className="panelHeader termPanelHeader">
               <div className="termPanelHeaderRow">
@@ -5719,13 +6548,11 @@ export function App() {
                   </div>
                 )}
               </div>
+              {termContextRow}
+              {mobileTerminalFocusBar}
+              {termReminderBar}
               {isMobile && termMode === "cursor" && (
                 <div ref={chatHeaderContainerRef} className="mobileChatHeaderSlot" />
-              )}
-              {!isMobile && (
-                <div className="termPanelHeaderCwd" title={terminalCwd}>
-                  {terminalCwd ? t("工作目录: {path}", { path: terminalCwd }) : ""}
-                </div>
               )}
             </div>
             <div
@@ -5747,6 +6574,7 @@ export function App() {
                 position: "relative",
               }}
             >
+              {termRecoveryCard}
               <div
                 className={
                   "termChatWrap termPane " +
@@ -6200,11 +7028,7 @@ export function App() {
                 type="button"
                 className="btn"
                 onClick={() => {
-                  const sid = termSessionIdRef.current;
-                  const client = termClientRef.current;
-                  if (sid && client && pasteModalText) {
-                    void client.stdin(sid, pasteModalText).catch(() => {});
-                  }
+                  if (!sendTermRawInput(pasteModalText)) return;
                   setPasteModalOpen(false);
                   setPasteModalText("");
                 }}
@@ -6349,24 +7173,79 @@ export function App() {
           onClick={() => setReplayOpen(false)}
           role="dialog"
           aria-modal="true"
-          aria-label={replayTitle || t("终端回放")}
+          aria-label={replayTitle || t("产物详情")}
         >
           <div
             className="replayModalBox"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="replayModalHeader">
-              <h3 className="replayModalTitle">{replayTitle || t("终端回放")}</h3>
+              <div className="replayModalTitleWrap">
+                <h3 className="replayModalTitle">{replayTitle || t("产物详情")}</h3>
+                <div className="replayModalMetaRow">
+                  <span className="controlPlaneCardPill">{artifactSourceLabel || t("终端回放")}</span>
+                  {artifactSessionMode ? <span className="controlPlaneCardPill">{artifactSessionMode}</span> : null}
+                  {artifactSessionStatus ? <span className="controlPlaneCardPill">{artifactSessionStatus}</span> : null}
+                </div>
+              </div>
               <button className="btn btnSm" onClick={() => setReplayOpen(false)}>{t("关闭")}</button>
             </div>
             <div className="replayModalBody">
               {replayLoading ? (
                 <div className="fileMeta">{t("加载中…")}</div>
               ) : (
-                <pre className="replayModalPre">{replayText}</pre>
+                <div className="artifactInspector">
+                  <div className="artifactInspectorSummary">
+                    <div className="artifactInspectorSummaryItem">
+                      <span className="artifactInspectorSummaryLabel">{t("会话")}</span>
+                      <span className="artifactInspectorSummaryValue">{artifactSessionId}</span>
+                    </div>
+                    {artifactSessionCwd ? (
+                      <div className="artifactInspectorSummaryItem">
+                        <span className="artifactInspectorSummaryLabel">{t("工作目录")}</span>
+                        <span className="artifactInspectorSummaryValue" title={artifactSessionCwd}>{artifactSessionCwd}</span>
+                      </div>
+                    ) : null}
+                    <div className="artifactInspectorSummaryItem">
+                      <span className="artifactInspectorSummaryLabel">{t("类型")}</span>
+                      <span className="artifactInspectorSummaryValue">{artifactKind}</span>
+                    </div>
+                    {artifactKind === "diff" ? (
+                      <div className="artifactInspectorSummaryItem">
+                        <span className="artifactInspectorSummaryLabel">{t("Diff 摘要")}</span>
+                        <span className="artifactInspectorSummaryValue">
+                          {t("{files} 个文件 · +{added} / -{removed}", artifactDiffSummary)}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                  {artifactEmptyHint ? <div className="fileMeta">{artifactEmptyHint}</div> : null}
+                  {artifactKind === "diff" && artifactDiffBlocks.length > 0 ? (
+                    <div className="artifactInspectorDiffList">
+                      {artifactDiffBlocks.map((block) => (
+                        <div className="artifactInspectorDiffBlock" key={block.header}>
+                          <div className="artifactInspectorDiffHeader">{block.header}</div>
+                          <pre className="artifactInspectorDiffPre">{block.body}</pre>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="artifactInspectorRawSection">
+                    <div className="artifactInspectorRawTitle">
+                      {artifactKind === "snapshot" ? t("原始快照") : artifactKind === "diff" ? t("原始终端输出") : t("原始回放")}
+                    </div>
+                    <pre className="replayModalPre">{replayText}</pre>
+                  </div>
+                </div>
               )}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {termLiveText ? (
+        <div className="srOnly" aria-live="polite" aria-atomic="true">
+          {termLiveText}
         </div>
       ) : null}
 

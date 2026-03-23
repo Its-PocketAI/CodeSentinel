@@ -1,10 +1,10 @@
 import fs from "node:fs";
-import path from "node:path";
 import { execa } from "execa";
 import { appendRecording, initSessionRecording, writeSessionMeta } from "./recording.js";
 import { snapshotManager } from "./snapshotManager.js";
 import { buildRunAsEnv, type RunAsUser } from "../userRunAs.js";
 import { loadPty, type Pty } from "./ptyLoader.js";
+import { buildCliPath, resolveCliBinary, resolveCliSpawnCommand, selectCliRuntime } from "./cliRuntime.js";
 
 export type TermSend = (msg: any) => void;
 
@@ -21,52 +21,12 @@ function randomId() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
 
-function fileExists(p: string) {
-  try {
-    // On Windows, check if file exists (no X_OK needed)
-    if (process.platform === "win32") {
-      return fs.existsSync(p);
-    }
-    fs.accessSync(p, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function which(binName: string): Promise<string | null> {
-  try {
-    // On Windows, use where.exe instead of which
-    const cmd = process.platform === "win32" ? "where.exe" : "which";
-    const r = await execa(cmd, [binName]);
-    const p = r.stdout.trim().split("\n")[0]; // Take first result on Windows
-    if (p && fileExists(p)) return p;
-  } catch {}
-  return null;
-}
-
-async function resolveCodexBin(): Promise<string> {
-  const override = process.env.CODEX_BIN;
-  if (override && fileExists(override)) return override;
-
-  // Try Windows-specific npm global location first (more reliable)
-  if (process.platform === "win32") {
-    const npmPrefix = process.env.APPDATA || process.env.LOCALAPPDATA || "";
-    if (npmPrefix) {
-      const winCodex = path.join(npmPrefix, "npm", "codex.cmd");
-      if (fileExists(winCodex)) return winCodex;
-      
-      // Also try without .cmd extension
-      const winCodexNoExt = path.join(npmPrefix, "npm", "codex");
-      if (fileExists(winCodexNoExt)) return winCodexNoExt;
-    }
-  }
-  
-  // Try to find codex in PATH
-  const codex = await which("codex");
-  if (codex) return codex;
-
-  throw new Error('Cannot find "codex". Install it with: npm i -g @openai/codex or set CODEX_BIN=/absolute/path/to/codex.');
+async function resolveCodexBin(runAs?: RunAsUser | null) {
+  return await resolveCliBinary({
+    binName: "codex",
+    runAs: runAs ?? null,
+    overrideBin: process.env.CODEX_BIN,
+  });
 }
 
 export class PtyCodexManager {
@@ -91,23 +51,15 @@ export class PtyCodexManager {
     const sessionId = `t_${randomId()}`;
 
     const { pty, spawnOptions } = await loadPty();
-    const codexBin = await resolveCodexBin();
+    const runtime = await selectCliRuntime({
+      displayName: "Codex",
+      runAs,
+      smokeArgs: ["--version"],
+      resolveBin: resolveCodexBin,
+    });
+    const spawn = resolveCliSpawnCommand(runtime.binPath);
 
-    // If codex is a JS entrypoint, run it via node under PTY.
-    const codexReal = (() => {
-      try {
-        return fs.realpathSync(codexBin);
-      } catch {
-        return codexBin;
-      }
-    })();
-    const cmd = codexReal.endsWith(".js") || codexReal.endsWith(".cjs") ? process.execPath : codexBin;
-    // Codex CLI doesn't support --no-alt-screen, so we just run it without extra args
-    const args = cmd === process.execPath ? [codexReal] : [];
-
-    const spawnPath = [path.dirname(codexBin), path.dirname(process.execPath), process.env.PATH ?? ""].filter(Boolean).join(path.delimiter);
-
-    const term = pty.spawn(cmd, args, {
+    const term = pty.spawn(spawn.cmd, spawn.args, {
       name: "xterm-256color",
       cols,
       rows,
@@ -115,12 +67,12 @@ export class PtyCodexManager {
       ...spawnOptions,
       env: buildRunAsEnv({
         ...process.env,
-        PATH: spawnPath,
+        PATH: buildCliPath(runtime.binPath, runtime.runAs, runtime.pathEnv),
         TERM: "xterm-256color",
         COLORTERM: process.env.COLORTERM ?? "truecolor",
-      }, runAs ?? null),
-      uid: runAs?.uid,
-      gid: runAs?.gid,
+      }, runtime.runAs),
+      uid: runtime.runAs?.uid,
+      gid: runtime.runAs?.gid,
     });
 
     const stdoutPath = initSessionRecording(sessionId);
@@ -135,6 +87,13 @@ export class PtyCodexManager {
       sessionId,
       data: `[codex] PTY started, waiting for codex output...\r\n`,
     });
+    if (runtime.notice) {
+      this.opts.send({
+        t: "term.data",
+        sessionId,
+        data: `[codex] ${runtime.notice}\r\n`,
+      });
+    }
 
     term.onData((chunk: string) => {
       appendRecording(stdoutPath, chunk, this.opts.termLogMaxBytes);

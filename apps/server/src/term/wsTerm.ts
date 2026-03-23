@@ -15,6 +15,8 @@ import { GeminiCliManager } from "./geminiCliManager.js";
 import { KimiCliManager } from "./kimiCliManager.js";
 import { QwenCliManager } from "./qwenCliManager.js";
 import { formatTerminalError } from "./ptyLoader.js";
+import { createSessionEventController } from "./sessionEvents.js";
+import { sanitizeTermOpenSize, sanitizeTermResizeSize } from "./terminalGeometry.js";
 import type { RunAsUser } from "../userRunAs.js";
 
 type ActiveSessionMeta = { sessionId: string; cwd: string; mode: string };
@@ -80,11 +82,16 @@ export function attachTermWs(opts: {
   const sessionMeta = new Map<string, { cwd: string; mode: string }>();
   const sessionOwners = new Map<string, SessionOwnerRef>();
   const sessionActiveAt = new Map<string, number>();
+  const allSockets = new Set<WebSocket>();
 
   const send = (ws: WebSocket, msg: TermServerMsg) => {
     if (ws.readyState !== ws.OPEN) return;
     ws.send(JSON.stringify(msg));
   };
+
+  const sessionEvents = createSessionEventController((event) => {
+    for (const sock of allSockets) send(sock, event as TermServerMsg);
+  });
 
   const shouldCleanupOnExit = (mode: string) => {
     return !(mode === "restricted-exec" || mode === "native");
@@ -103,10 +110,18 @@ export function attachTermWs(opts: {
   };
 
   const broadcast = (msg: TermServerMsg) => {
+    if (msg.t === "session.event") {
+      for (const sock of allSockets) send(sock, msg);
+      return;
+    }
     if ((msg as any)?.sessionId) {
       const sessionId = (msg as any).sessionId as string;
       if (msg.t === "term.data") {
         touchSession(sessionId);
+        const meta = sessionMeta.get(sessionId);
+        if (meta) {
+          sessionEvents.parseData({ sessionId, cwd: meta.cwd, mode: meta.mode }, msg.data);
+        }
       }
       const subs = sessionSubs.get(sessionId);
       if (subs && subs.size > 0) {
@@ -114,8 +129,15 @@ export function attachTermWs(opts: {
       }
       if (msg.t === "term.exit") {
         const meta = sessionMeta.get(sessionId);
-        if (meta && shouldCleanupOnExit(meta.mode)) {
-          cleanupSession(sessionId);
+        if (meta) {
+          if (meta.mode === "restricted-exec") {
+            sessionEvents.completed({ sessionId, cwd: meta.cwd, mode: meta.mode }, msg.code);
+          } else {
+            sessionEvents.exited({ sessionId, cwd: meta.cwd, mode: meta.mode }, msg.code);
+          }
+          if (shouldCleanupOnExit(meta.mode)) {
+            cleanupSession(sessionId);
+          }
         }
       }
     }
@@ -146,6 +168,7 @@ export function attachTermWs(opts: {
     sessionMeta.set(sessionId, { cwd, mode });
     sessionActiveAt.set(sessionId, Date.now());
     if (ws) attachSession(ws, sessionId);
+    sessionEvents.opened({ sessionId, cwd, mode });
   };
 
   // Expose current active sessions to the HTTP layer (read-only).
@@ -242,8 +265,8 @@ export function attachTermWs(opts: {
       if (now - lastAt < idleTtlMs) continue;
       const owner = sessionOwners.get(sessionId);
       const subs = sessionSubs.get(sessionId);
+      const ttlHours = Math.max(0.1, Math.round((idleTtlMs / 3600000) * 10) / 10);
       if (subs && subs.size > 0) {
-        const ttlHours = Math.max(0.1, Math.round((idleTtlMs / 3600000) * 10) / 10);
         for (const sock of subs) {
           send(sock, { t: "term.data", sessionId, data: `\r\n[session] closed after ${ttlHours}h idle timeout\r\n` });
         }
@@ -251,6 +274,10 @@ export function attachTermWs(opts: {
       try {
         owner?.manager?.close?.(sessionId);
       } catch {}
+      const meta = sessionMeta.get(sessionId);
+      if (meta) {
+        sessionEvents.idleTimeout({ sessionId, cwd: meta.cwd, mode: meta.mode }, ttlHours);
+      }
       cleanupSession(sessionId);
     }
   }, sweepIntervalMs);
@@ -275,6 +302,8 @@ export function attachTermWs(opts: {
       }
     }
 
+    allSockets.add(ws);
+
     ws.on("message", async (data) => {
       const text =
         typeof data === "string"
@@ -298,8 +327,8 @@ export function attachTermWs(opts: {
       try {
         if (t === "term.open") {
           const cwd = (msg as any).cwd;
-          const cols = Number((msg as any).cols ?? 120);
-          const rows = Number((msg as any).rows ?? 30);
+          const rawCols = Number((msg as any).cols ?? 120);
+          const rawRows = Number((msg as any).rows ?? 30);
           const mode = String((msg as any).mode ?? "restricted") as
             | "restricted"
             | "native"
@@ -313,7 +342,8 @@ export function attachTermWs(opts: {
             | "cursor-cli-plan"
             | "cursor-cli-ask";
           if (typeof cwd !== "string" || cwd.length === 0) return fail("term.open", "Missing cwd");
-          if (!Number.isFinite(cols) || !Number.isFinite(rows)) return fail("term.open", "Invalid cols/rows");
+          if (!Number.isFinite(rawCols) || !Number.isFinite(rawRows)) return fail("term.open", "Invalid cols/rows");
+          const { cols, rows } = sanitizeTermOpenSize(rawCols, rawRows);
           const realCwd = await opts.validateCwd(cwd);
           const runAs = opts.resolveRunAs ? opts.resolveRunAs(realCwd) : null;
           if (mode === "restricted") {
@@ -438,6 +468,7 @@ export function attachTermWs(opts: {
           attachSession(ws, sessionId);
           touchSession(sessionId);
           send(ws, { t: "term.attach.resp", reqId, ok: true, sessionId, cwd: meta.cwd, mode: meta.mode });
+          sessionEvents.attached({ sessionId, cwd: meta.cwd, mode: meta.mode });
           return;
         }
 
@@ -451,6 +482,10 @@ export function attachTermWs(opts: {
             } catch {}
           }
           send(ws, { t: "term.close.resp", reqId, ok: true });
+          const meta = sessionMeta.get(sessionId);
+          if (meta) {
+            sessionEvents.closed({ sessionId, cwd: meta.cwd, mode: meta.mode });
+          }
           broadcast({ t: "term.exit", sessionId, code: 0 } as TermServerMsg);
           cleanupSession(sessionId);
           return;
@@ -458,10 +493,11 @@ export function attachTermWs(opts: {
 
         if (t === "term.resize") {
           const sessionId = String((msg as any).sessionId ?? "");
-          const cols = Number((msg as any).cols);
-          const rows = Number((msg as any).rows);
+          const rawCols = Number((msg as any).cols);
+          const rawRows = Number((msg as any).rows);
           if (!sessionId) return fail("term.resize", "Missing sessionId");
-          if (!Number.isFinite(cols) || !Number.isFinite(rows)) return fail("term.resize", "Invalid cols/rows");
+          if (!Number.isFinite(rawCols) || !Number.isFinite(rawRows)) return fail("term.resize", "Invalid cols/rows");
+          const { cols, rows } = sanitizeTermResizeSize(rawCols, rawRows);
           const owner = sessionOwners.get(sessionId);
           if (!owner) return fail("term.resize", "Unknown session");
           touchSession(sessionId);
@@ -496,6 +532,7 @@ export function attachTermWs(opts: {
 
     ws.on("close", () => {
       detachWs(ws);
+      allSockets.delete(ws);
     });
   });
 

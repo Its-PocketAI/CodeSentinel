@@ -16,14 +16,28 @@ if (localStorage.getItem("vconsole") === "1") {
 }
 
 // Monaco Editor 在布局变化（如切换 Codex/终端模式）时会取消内部异步操作并抛出 Canceled，属于预期行为，忽略即可
-window.addEventListener("unhandledrejection", (event) => {
-  const r = event.reason;
-  const name = typeof r === "object" && r !== null ? r.name : null;
-  const msg = typeof r === "object" && r !== null ? r.message : String(r ?? "");
-  const isMonacoCanceled =
+function isMonacoCanceledError(reason: unknown, fallbackMessage = "", filename = "") {
+  const name = typeof reason === "object" && reason !== null ? (reason as { name?: unknown }).name : null;
+  const msg =
+    typeof reason === "object" && reason !== null && "message" in reason
+      ? String((reason as { message?: unknown }).message ?? fallbackMessage)
+      : String(fallbackMessage || (reason ?? ""));
+  return (
     (name === "Canceled" && msg === "Canceled") ||
-    (typeof msg === "string" && msg.includes("Canceled"));
-  if (isMonacoCanceled) {
+    msg.includes("Canceled") ||
+    (filename.includes("editor.api") && msg.includes("ERR Canceled"))
+  );
+}
+
+window.addEventListener("unhandledrejection", (event) => {
+  if (isMonacoCanceledError(event.reason)) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+});
+
+window.addEventListener("error", (event) => {
+  if (isMonacoCanceledError(event.error, event.message, event.filename || "")) {
     event.preventDefault();
     event.stopPropagation();
   }

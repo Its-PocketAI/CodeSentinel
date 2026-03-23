@@ -18,6 +18,7 @@ import { attachTermWs, closeActiveTermSession, listActiveTermSessions } from "./
 import { getDataDir } from "./paths.js";
 import { snapshotManager } from "./term/snapshotManager.js";
 import { readSessionMeta } from "./term/recording.js";
+import { getTermSessionDataDir, getTermSessionsBaseDir, removeTermSessionArtifacts } from "./term/sessionPaths.js";
 import { executeCursorAgent, spawnCursorAgentStream, listCursorModels } from "./cursorAgent.js";
 import { resolveProjectRunAs, resolveUserHome } from "./userRunAs.js";
 import type { ChatSession, Message, Workspace } from "./db.js";
@@ -554,13 +555,15 @@ async function main() {
     panelEditorCollapsed: false,
     panelTerminalCollapsed: false,
     leftWidth: 320,
-    topHeight: 49,
+    topHeight: 58,
     mobileKeysVisible: false,
     fontSize: 12,
+    controlPlaneEnabled: true,
   };
 
   const normalizeUiState = (input: unknown) => {
     const raw = input && typeof input === "object" ? (input as any) : {};
+    const rawMobileTab = raw.mobileTab === "queue" ? "terminal" : raw.mobileTab;
     const pick = <T extends string>(val: unknown, allowed: T[], fallback: T): T =>
       typeof val === "string" && (allowed as string[]).includes(val) ? (val as T) : fallback;
     const pickBool = (val: unknown, fallback: boolean) => (typeof val === "boolean" ? val : fallback);
@@ -570,7 +573,7 @@ async function main() {
       return Math.min(max, Math.max(min, Math.round(n)));
     };
     return {
-      mobileTab: pick(raw.mobileTab, ["explorer", "editor", "terminal", "windows", "settings"], defaultUiState.mobileTab),
+      mobileTab: pick(rawMobileTab, ["explorer", "editor", "terminal", "windows", "artifacts", "settings"], defaultUiState.mobileTab),
       leftPanelTab: pick(raw.leftPanelTab, ["files", "settings", "windows"], defaultUiState.leftPanelTab),
       termMode: pick(raw.termMode, ["cursor", "codex", "claude", "opencode", "gemini", "kimi", "qwen", "cursor-cli", "restricted"], defaultUiState.termMode),
       cursorMode: pick(raw.cursorMode, ["agent", "plan", "ask"], defaultUiState.cursorMode),
@@ -583,6 +586,7 @@ async function main() {
       topHeight: pickNum(raw.topHeight, defaultUiState.topHeight, 20, 80),
       mobileKeysVisible: pickBool(raw.mobileKeysVisible, defaultUiState.mobileKeysVisible),
       fontSize: pickNum(raw.fontSize, defaultUiState.fontSize, 10, 18),
+      controlPlaneEnabled: pickBool(raw.controlPlaneEnabled, defaultUiState.controlPlaneEnabled),
     };
   };
 
@@ -1519,7 +1523,7 @@ async function main() {
       return;
     }
     const tailBytes = Math.max(1024, Math.min(Number(req.query.tailBytes ?? 20000), 200000));
-    const baseDir = path.join(getDataDir(), "term", sessionId);
+    const baseDir = getTermSessionDataDir(sessionId);
     const stdoutPath = path.join(baseDir, "stdout");
     try {
       if (!fs.existsSync(stdoutPath)) {
@@ -1544,7 +1548,7 @@ async function main() {
     try {
       const limitRaw = Number(_req.query.limit ?? 50);
       const limit = Math.max(1, Math.min(Number.isFinite(limitRaw) ? limitRaw : 50, 200));
-      const base = path.join(getDataDir(), "term");
+      const base = getTermSessionsBaseDir();
       if (!fs.existsSync(base)) return res.json({ ok: true, sessions: [] });
 
       const active = listActiveTermSessions();
@@ -1592,16 +1596,26 @@ async function main() {
       return;
     }
     try {
+      const meta = readSessionMeta(sessionId);
       const closedLive = closeActiveTermSession(sessionId);
-      const baseDir = path.join(getDataDir(), "term", sessionId);
+      const baseDir = getTermSessionDataDir(sessionId);
       const hasRecordings = fs.existsSync(baseDir);
       if (!hasRecordings && !closedLive) {
-        return res.status(404).json({ ok: false, error: "not found" });
+        return res.json({
+          ok: true,
+          closedLive: false,
+          removedRecording: false,
+          removedControlDir: false,
+          alreadyMissing: true,
+        });
       }
-      if (hasRecordings) {
-        fs.rmSync(baseDir, { recursive: true, force: true });
-      }
-      return res.json({ ok: true, closedLive, removedRecording: hasRecordings });
+      const removed = removeTermSessionArtifacts(sessionId, meta?.controlDir);
+      return res.json({
+        ok: true,
+        closedLive,
+        removedRecording: removed.removedRecording,
+        removedControlDir: removed.removedControlDir,
+      });
     } catch (e: any) {
       res.status(500).json({ ok: false, error: e?.message ?? String(e) });
     }
@@ -1623,7 +1637,7 @@ async function main() {
         }
       } catch {}
 
-      const baseDir = path.join(getDataDir(), "term", sessionId);
+      const baseDir = getTermSessionDataDir(sessionId);
       const stdoutPath = path.join(baseDir, "stdout");
       try {
         if (!fs.existsSync(stdoutPath)) {
@@ -2398,11 +2412,12 @@ async function main() {
   // ==================== End Editor state APIs ====================
 
   // In production, optionally serve the built web app from apps/web/dist.
+  const webDist = path.join(repoRoot, "apps", "web", "dist");
   const serveWeb =
     process.env.CODESENTINEL_SERVE_WEB === "1" ||
-    process.env.NODE_ENV === "production";
+    process.env.NODE_ENV === "production" ||
+    fs.existsSync(webDist);
   if (serveWeb) {
-    const webDist = path.join(repoRoot, "apps", "web", "dist");
     if (fs.existsSync(webDist)) {
       app.use(express.static(webDist));
       app.get("/", (_req, res) => res.sendFile(path.join(webDist, "index.html")));

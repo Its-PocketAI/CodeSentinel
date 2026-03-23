@@ -5,7 +5,7 @@ import { appendRecording, initSessionRecording, writeSessionMeta } from "./recor
 import { snapshotManager } from "./snapshotManager.js";
 import { buildRunAsEnv, type RunAsUser } from "../userRunAs.js";
 import { loadPty, type Pty } from "./ptyLoader.js";
-import { getDataDir } from "../paths.js";
+import { resolveTermSessionControlDir } from "./sessionPaths.js";
 
 export type TermSend = (msg: any) => void;
 
@@ -362,9 +362,7 @@ export class PtyRestrictedManager {
     if (this.sessions.size >= this.opts.maxSessions) throw new Error("Too many sessions");
     const realCwd = await this.opts.validateCwd(cwd);
     const sessionId = `r_${randomId()}`;
-
-    const controlDir = path.join(getDataDir(), "term", sessionId);
-    fs.mkdirSync(controlDir, { recursive: true });
+    const controlDir = resolveTermSessionControlDir(sessionId, runAs ?? null);
     const shellLaunch = await resolveShellLaunch({
       controlDir,
       cwd: realCwd,
@@ -387,7 +385,7 @@ export class PtyRestrictedManager {
     });
 
     const stdoutPath = initSessionRecording(sessionId);
-    writeSessionMeta(sessionId, { cwd: realCwd, mode: "restricted-pty" });
+    writeSessionMeta(sessionId, { cwd: realCwd, mode: "restricted-pty", controlDir });
     await snapshotManager.create(sessionId, cols, rows);
 
     const s: RestrictedPtySession = {
